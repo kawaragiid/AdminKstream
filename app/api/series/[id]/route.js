@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSeries, updateSeries, deleteSeries } from "@/lib/firestoreService";
-import { deleteAsset, isMuxConfigured } from "@/lib/muxService";
+import { deleteAsset, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { getSessionUser } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -39,17 +39,25 @@ export async function PUT(request, { params }) {
 
     const payload = await request.json();
     const merged = { ...existing, ...payload };
-    merged.mux_asset_id = merged.mux_asset_id ?? merged.mux_video_id ?? merged.mux_playback_id ?? null;
+    merged.mux_asset_id = (await resolveAssetId([
+      merged.mux_asset_id,
+      merged.mux_video_id,
+      merged.mux_playback_id,
+    ])) ?? null;
     if (Array.isArray(merged.episodes)) {
-      merged.episodes = merged.episodes.map((episode) => ({
-        ...episode,
-        mux_asset_id: episode?.mux_asset_id ?? episode?.mux_video_id ?? episode?.mux_playback_id ?? null,
-      }));
-    }
-    const { valid, errors } = validateSeriesPayload(merged);
-
-    if (!valid) {
-      return NextResponse.json({ error: "Validasi gagal.", details: errors }, { status: 422 });
+      merged.episodes = await Promise.all(
+        merged.episodes.map(async (episode) => {
+          const fallbackIds = [
+            episode?.mux_asset_id,
+            episode?.mux_video_id,
+            episode?.mux_playback_id,
+          ];
+          return {
+            ...episode,
+            mux_asset_id: (await resolveAssetId(fallbackIds)) ?? null,
+          };
+        })
+      );
     }
 
     const { id: _omit, ...data } = merged;

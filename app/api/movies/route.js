@@ -1,5 +1,6 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { listMovies, createMovie } from "@/lib/firestoreService";
+import { resolveAssetId } from "@/lib/muxService";
 import { validateMoviePayload } from "@/utils/validators";
 import { getSessionUser } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -33,7 +34,11 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
-    payload.mux_asset_id = payload.mux_asset_id ?? payload.mux_video_id ?? payload.mux_playback_id ?? null;
+    payload.mux_asset_id = (await resolveAssetId([
+      payload.mux_asset_id,
+      payload.mux_video_id,
+      payload.mux_playback_id,
+    ])) ?? null;
     const { valid, errors } = validateMoviePayload(payload);
 
     if (!valid) {

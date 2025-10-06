@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSeries, addEpisode } from "@/lib/firestoreService";
+import { resolveAssetId } from "@/lib/muxService";
 import { validateEpisode } from "@/utils/validators";
 import { getSessionUser } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -31,7 +32,11 @@ export async function POST(request, { params }) {
 
   try {
     const payload = await request.json();
-    payload.mux_asset_id = payload.mux_asset_id ?? payload.mux_video_id ?? payload.mux_playback_id ?? null;
+    payload.mux_asset_id = (await resolveAssetId([
+      payload.mux_asset_id,
+      payload.mux_video_id,
+      payload.mux_playback_id,
+    ])) ?? null;
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }

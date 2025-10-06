@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { addMultipleTextTracks, isMuxConfigured } from "@/lib/muxService";
+import { addMultipleTextTracks, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
 import { getSessionUser } from "@/lib/session";
 
 export async function POST(request) {
@@ -10,18 +10,31 @@ export async function POST(request) {
 
   try {
     const body = await request.json();
-    const assetId = body?.assetId;
-    console.log("[MUX DEBUG] Receiving assetId:", assetId);
+    let assetId = body?.assetId;
     const tracks = Array.isArray(body?.tracks) ? body.tracks : [];
 
-    if (!assetId || !tracks.length) {
-      return NextResponse.json({ error: "assetId dan tracks wajib diisi." }, { status: 400 });
+    console.log("[MUX DEBUG] Receiving assetId:", assetId);
+    console.log("TEXT TRACK REQUEST BODY", body);
+
+    if (!assetId) {
+      return NextResponse.json({ error: "assetId wajib diisi." }, { status: 400 });
+    }
+
+    assetId = await resolveAssetId(assetId);
+    if (!assetId) {
+      return NextResponse.json({ error: "assetId tidak valid." }, { status: 400 });
+    }
+    if (assetId !== body?.assetId) {
+      console.log("[MUX DEBUG] Normalized assetId:", assetId);
+    }
+
+    if (!tracks.length) {
+      return NextResponse.json({ error: "Tracks wajib diisi." }, { status: 400 });
     }
 
     // Hanya izinkan URL http(s). Mux membutuhkan URL publik yang bisa di-fetch.
     const filtered = tracks.filter((t) => typeof t?.url === "string" && /^https?:\/\//i.test(t.url));
 
-    console.log("TEXT TRACK REQUEST BODY", body);
     console.log("FILTERED TRACKS", filtered);
     if (!filtered.length) {
       return NextResponse.json({ error: "Semua track harus memiliki URL http(s) yang valid." }, { status: 400 });
@@ -35,5 +48,3 @@ export async function POST(request) {
     return NextResponse.json({ error: "Gagal menambahkan subtitle ke Mux." }, { status: 500 });
   }
 }
-
-
