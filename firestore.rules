@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // User profile & subscription metadata
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Konten premium
+    match /premiumContent/{docId} {
+      allow read: if isAllowed();
+      allow write: if false; // hanya server/admin
+    }
+
+    function isAllowed() {
+      return request.auth != null && (
+        // Role admin/editor selalu boleh
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super-admin', 'admin', 'editor']
+        ||
+        // Role pelanggan wajib masih aktif (expiresAt bertipe timestamp)
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pelanggan'
+          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.expiresAt > request.time
+        )
+      );
+    }
+  }
+}

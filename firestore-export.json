@@ -1,0 +1,145 @@
+{
+  "exportedAt": "2025-10-02T17:11:54.007Z",
+  "collections": {
+    "movies": [
+      {
+        "id": "uSgi3fjpvMXrU9nxvfk7",
+        "type": "movie",
+        "title": "Tengu ",
+        "description": "Kabur ke Jepang ",
+        "category": "Adventure",
+        "mux_video_id": "LmGKGN82Emxda92iHAuk2ZOW9yraLSVQm02kMVJO1baY",
+        "thumbnail": null,
+        "trailer": null,
+        "subtitles": [
+          {
+            "lang": "jp",
+            "label": "JP",
+            "url": "blob:http://localhost:3000/a396cf11-581f-4724-9368-6081e10e69bd"
+          }
+        ],
+        "tags": [],
+        "createdAt": "2025-10-01T16:21:59.506Z",
+        "updatedAt": "2025-10-01T16:21:59.506Z",
+        "createdBy": {
+          "uid": "ajjB2F5u7XcA9isirJsMFIRhbg62",
+          "email": "kowachankeigo@gmail.com",
+          "displayName": "Keigo"
+        }
+      },
+      {
+        "id": "wruN2n6zAxOqBIaJ2gNT",
+        "subtitles": [
+          {
+            "language": "id",
+            "url": "https://firebasestorage.googleapis.com/v0/b/kawaragi-40dcd.appspot.com/o/subtitles%2FMOVIE%20%E5%A4%A7%E9%87%8E%E9%81%A5%E6%96%97%E5%B1%B1%E5%8F%A3%E6%9A%96%E4%BA%BA%E7%A9%B6%E6%A5%B5%E3%81%AE2%E6%8A%9E%E3%81%AB%E6%8C%91%E6%88%A6%20-%20STARDUST%20WEB.vtt?alt=media&token=fc67e271-c3cb-45e7-be1a-b789a488e560"
+          }
+        ],
+        "thumbnail": "https://firebasestorage.googleapis.com/v0/b/kawaragi-40dcd.appspot.com/o/thumbnails%2FWhatsApp%20Image%202024-08-04%20at%2022.30.47.jpeg?alt=media&token=d58ae03f-36dc-4ec2-9daf-a3ae6e921279",
+        "description": "QnA",
+        "movieUrl": "https://firebasestorage.googleapis.com/v0/b/kawaragi-40dcd.appspot.com/o/manifests%2FHaruto%20%26%20Haruhi.m3u8?alt=media&token=5be8e413-40c7-40a4-a71c-f662c8b9e2bd",
+        "title": "Haruto & Haruhi",
+        "category": "Ebidan"
+      }
+    ],
+    "series": [
+      {
+        "id": "00gSSIyIZvDVxF7PWo9H",
+        "type": "series",
+        "category": "Action",
+        "trailer": null,
+        "tags": [],
+        "subtitles": [],
+        "createdAt": "2025-10-01T20:55:10.289Z",
+        "createdBy": {
+          "uid": "ajjB2F5u7XcA9isirJsMFIRhbg62",
+          "email": "kowachankeigo@gmail.com",
+          "displayName": "Keigo Kowachan"
+        },
+        "thumbnail": "https://i.mydramalist.com/Xd1gOn_4f.jpg",
+        "description": "Masak-Masak",
+        "title": "Tengu no Daidokoro",
+        "episodes": [
+          {
+            "episodeId": "6c22f79b-1236-4170-9bf8-2ed65444799b",
+            "epNumber": 1,
+            "title": "Kabur ke Jepang",
+            "description": "On memutuskan buat kembali ke Jepang mengunjungi kakaknya untuk mengisi liburannya, karena dia sangat bosan di rumah.",
+            "mux_asset_id": "ZtVi4PKRDN5T6HMu9jalTjRReBgIhgIIQthlTGPUMwU",
+            "mux_playback_id": "01pHnv00OxJTZdz02fpeJ2W4kRQWf01qQCNxynBgLFFcAVo",
+            "mux_video_id": "01pHnv00OxJTZdz02fpeJ2W4kRQWf01qQCNxynBgLFFcAVo",
+            "fileHash": null,
+            "thumbnail": null,
+            "subtitles": [
+              {
+                "lang": "jp",
+                "label": "Jepang",
+                "url": "https://storage.googleapis.com/kawaragi-40dcd.appspot.com/subtitles/ajjB2F5u7XcA9isirJsMFIRhbg62/1759421811113-%25E5%25A4%25A9%25E7%258B%2597%25E3%2581%25AE%25E5%258F%25B0%25E6%2589%2580%2520%25EF%25BC%25B3%25EF%25BD%2585%25EF%25BD%2581%25EF%25BD%2593%25EF%25BD%258F%25EF%25BD%258E%25EF%25BC%2592%2520%25E7%25AC%25AC%25EF%25BC%2591%25E8%25A9%25B1%25E3%2580%258C%25E3%2583%2596%25E3%2583%25AB%25E3%2583%25BC%25E3%2583%2599%25E3%2583%25AA%25E3%2583%25BC%25E3%2581%25A8%25E8%25BB%258A%25E6%25B5%25B7%25E8%2580%2581%25E3%2580%258D%2520%255Bref%25EF%25BC%259A26109_2075307_1000092054%255D.ja-JP.vtt?GoogleAccessId=firebase-adminsdk-uyfge%40kawaragi-40dcd.iam.gserviceaccount.com&Expires=4102358400&Signature=LDKJAGR9CDxwGeUbC3PyR2TCSLnA1sUgMNb%2BZGna8WaFT5LJLyVB7neFMdlXV55RgS6A2OhuDNLtyu%2Fh0cprhZedt2guul%2BWpNRtNTEAdW10xC76q7etZO9yLFyoxnPS7pBniSPGZ5WYMUlf9KHV0Gbmf8n3va%2B4dtxdFE%2FL29zCTb8qqCNWFvUjD%2BXdoozU45Ow7sHq7lqBpa9ZFvBKSMF%2FPqfVtNMIxs1cM8hrFbzmvW0Qmbg3jXs%2BqJGYg5RfauZR5xhe2WMCYKjmcExEZ8begavnT4RgFYvqZuXtggVHHgnRjHf6DMMIeel4nvTEKAiyebw5k1sj7pnt9E9H0A%3D%3D"
+              }
+            ],
+            "createdAt": "2025-10-01T20:55:10.289Z",
+            "updatedAt": "2025-10-02T16:28:32.981Z"
+          }
+        ],
+        "updatedAt": "2025-10-02T16:28:32.981Z"
+      },
+      {
+        "id": "jRe7VQWB3C72Yrl5TPzg",
+        "thumbnail": "https://firebasestorage.googleapis.com/v0/b/kawaragi-40dcd.appspot.com/o/thumbnails%2FTumbnail.png?alt=media&token=4cc32054-8349-43c7-9029-52488575a1e1",
+        "category": "NHKBS4K",
+        "type": "series",
+        "title": "Ooka Echizen 7",
+        "description": "Tenang dan kalem, namun energik dan humanis, film ini menggambarkan kegiatan seorang hakim terkenal yang melindungi kehidupan dan mata pencaharian rakyat biasa di Edo."
+      }
+    ],
+    "kstream-settings": [
+      {
+        "id": "platform",
+        "hero": {
+          "backgroundUrl": "https://images.unsplash.com/photo-1525182008055-f88b95ff7980",
+          "subtitle": "Tonton pertandingan final yang paling epic minggu ini!",
+          "contentId": "demo-1",
+          "title": "Final Tournament Stream"
+        },
+        "theme": {
+          "mode": "light"
+        },
+        "categories": [
+          "Action",
+          "Adventure",
+          "Comedy",
+          "Documentary",
+          "Drama",
+          "Fantasy",
+          "Horror",
+          "Kids",
+          "Romance",
+          "Sci-Fi",
+          "Thriller"
+        ],
+        "updatedAt": "2025-10-01T11:59:38.471Z"
+      }
+    ],
+    "users": [
+      {
+        "id": "2f8MaHtR1SNDJ4i7HVmEXlvqBLi1",
+        "expiresAt": "2025-11-01T16:46:35.292Z",
+        "role": "pelanggan",
+        "displayName": null,
+        "plan": "free",
+        "email": "tolpatol6@gmail.com",
+        "updatedAt": "2025-10-02T17:01:28.861Z"
+      },
+      {
+        "id": "ajjB2F5u7XcA9isirJsMFIRhbg62",
+        "email": "kowachankeigo@gmail.com",
+        "photoUrl": "https://firebasestorage.googleapis.com/v0/b/kawaragi-40dcd.appspot.com/o/profilePictures%2FajjB2F5u7XcA9isirJsMFIRhbg62%2F56.jpg?alt=media&token=853bb269-3a7f-4bd7-a312-6c388ed2c275",
+        "birthday": "2003-09-19",
+        "role": "super-admin",
+        "displayName": "Keigo Kowachan",
+        "plan": "free",
+        "updatedAt": "2025-10-01T18:37:05.320Z"
+      }
+    ]
+  }
+}
