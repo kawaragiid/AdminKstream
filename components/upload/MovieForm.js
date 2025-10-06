@@ -341,6 +341,32 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     }
   };
 
+  async function syncSubtitlesToMux(assetId, subtitles = []) {
+    if (!assetId || !Array.isArray(subtitles) || !subtitles.length) return;
+    try {
+      const validTracks = subtitles
+        .filter((s) => /^https?:\/\//i.test(s.url))
+        .map((s) => ({
+          url: s.url,
+          language_code: s.lang || "en",
+          name: s.label || s.lang || "Subtitle",
+        }));
+
+      if (validTracks.length) {
+        const res = await fetch("/api/mux/text-tracks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId, tracks: validTracks }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Gagal sinkronisasi subtitle ke Mux");
+        console.log("[mux] Subtitle tersinkron ke Mux:", json);
+      }
+    } catch (err) {
+      console.warn("[mux] Gagal sinkron subtitle ke Mux:", err.message);
+    }
+  }
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsSubmitting(true);
@@ -361,6 +387,12 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       }
 
       setMessage({ type: "success", text: "Movie berhasil disimpan." });
+
+      // Sinkronisasi subtitle ke Mux jika tersedia
+      if (formData.mux_asset_id && formData.subtitles?.length) {
+        await syncSubtitlesToMux(formData.mux_asset_id, formData.subtitles);
+      }
+
       if (!initialData?.id) {
         setFormData(defaultMovie);
       }
@@ -635,6 +667,3 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     </form>
   );
 }
-
-
-

@@ -307,6 +307,32 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     }
   };
 
+  async function syncSubtitlesToMux(assetId, subtitles = []) {
+    if (!assetId || !Array.isArray(subtitles) || !subtitles.length) return;
+    try {
+      const validTracks = subtitles
+        .filter((s) => /^https?:\/\//i.test(s.url))
+        .map((s) => ({
+          url: s.url,
+          language_code: s.lang || "en",
+          name: s.label || s.lang || "Subtitle",
+        }));
+
+      if (validTracks.length) {
+        const res = await fetch("/api/mux/text-tracks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assetId, tracks: validTracks }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Gagal sinkronisasi subtitle ke Mux");
+        console.log("[mux] Subtitle tersinkron ke Mux:", json);
+      }
+    } catch (err) {
+      console.warn("[mux] Gagal sinkron subtitle ke Mux:", err.message);
+    }
+  }
+
   const persistEpisodeDraft = async () => {
     // ... (Logika persistEpisodeDraft tetap)
     if (!(episodeDraft.mux_playback_id ?? episodeDraft.mux_video_id)) {
@@ -341,6 +367,11 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           return { ...prev, episodes };
         });
         setMessage({ type: "success", text: "Episode berhasil ditambahkan." });
+
+        // Sinkronisasi subtitle ke Mux jika tersedia
+        if (draft.mux_asset_id && draft.subtitles?.length) {
+          await syncSubtitlesToMux(draft.mux_asset_id, draft.subtitles);
+        }
       } catch (err) {
         setMessage({ type: "error", text: err.message });
         return;
