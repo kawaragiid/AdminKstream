@@ -19,15 +19,20 @@ export async function POST(request) {
 
     // Hanya izinkan URL http(s). Mux membutuhkan URL publik yang bisa di-fetch.
     const filtered = tracks.filter((t) => typeof t?.url === "string" && /^https?:\/\//i.test(t.url));
+
+    console.log("TEXT TRACK REQUEST BODY", body);
+    console.log("FILTERED TRACKS", filtered);
     if (!filtered.length) {
       return NextResponse.json({ error: "Semua track harus memiliki URL http(s) yang valid." }, { status: 400 });
     }
 
     const results = await addMultipleTextTracks(assetId, filtered);
+    console.log("MUX TEXT TRACKS RESULT", results);
     return NextResponse.json({ data: results, muxConfigured: isMuxConfigured });
   } catch (error) {
     console.error("POST /api/mux/text-tracks", error);
     return NextResponse.json({ error: "Gagal menambahkan subtitle ke Mux." }, { status: 500 });
   }
 }
+
 

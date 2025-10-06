@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -145,7 +145,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         // Jika masih gagal karena CORS, pakai proxy server-side
         if (!ok) {
           const proxyUrl = `/api/mux/proxy-upload?method=PUT&url=${encodeURIComponent(uploadUrl)}`;
-          // Proxy tidak memberi progress granular; tampilkan loading 90% → 100%
+          // Proxy tidak memberi progress granular; tampilkan loading 90% -> 100%
           setUploadProgress((p) => (p < 90 ? 90 : p));
           const proxyRes = await fetch(proxyUrl, { method: 'POST', body: file });
           ok = proxyRes.ok;
@@ -259,11 +259,12 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                 .map((t) => ({ url: t.url, language_code: t.lang || 'en', name: t.label || t.lang || 'Subtitle' })),
             ];
             if (tracks.length) {
-              await fetch('/api/mux/text-tracks', {
+              const res = await fetch('/api/mux/text-tracks', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ assetId, tracks }),
               });
+              console.log('[DEBUG] Subtitle sync response:', await res.json());
             }
           }
         } catch {}
@@ -667,3 +668,4 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     </form>
   );
 }
+
