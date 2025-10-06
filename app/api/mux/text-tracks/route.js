@@ -11,6 +11,7 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const assetId = body?.assetId;
+    console.log("[MUX DEBUG] Receiving assetId:", assetId);
     const tracks = Array.isArray(body?.tracks) ? body.tracks : [];
 
     if (!assetId || !tracks.length) {

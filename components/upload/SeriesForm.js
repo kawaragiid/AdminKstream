@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { CONTENT_CATEGORIES, SUBTITLE_LANGUAGES } from "@/utils/constants";
@@ -369,8 +369,12 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         setMessage({ type: "success", text: "Episode berhasil ditambahkan." });
 
         // Sinkronisasi subtitle ke Mux jika tersedia
-        if (draft.mux_asset_id && draft.subtitles?.length) {
-          await syncSubtitlesToMux(draft.mux_asset_id, draft.subtitles);
+        const assetId = draft.mux_asset_id || draft.mux_video_id || draft.mux_playback_id;
+
+        if (assetId && draft.subtitles?.length) {
+          await syncSubtitlesToMux(assetId, draft.subtitles);
+        } else {
+          console.warn("[mux] Subtitle sync skipped - assetId not found or subtitles empty");
         }
       } catch (err) {
         setMessage({ type: "error", text: err.message });

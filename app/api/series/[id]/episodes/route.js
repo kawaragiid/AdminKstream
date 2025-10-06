@@ -31,6 +31,7 @@ export async function POST(request, { params }) {
 
   try {
     const payload = await request.json();
+    payload.mux_asset_id = payload.mux_asset_id ?? payload.mux_video_id ?? payload.mux_playback_id ?? null;
     if (!payload || typeof payload !== 'object') {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }

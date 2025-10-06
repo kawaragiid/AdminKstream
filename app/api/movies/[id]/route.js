@@ -39,6 +39,7 @@ export async function PUT(request, { params }) {
 
     const payload = await request.json();
     const merged = { ...existing, ...payload };
+    merged.mux_asset_id = merged.mux_asset_id ?? merged.mux_video_id ?? merged.mux_playback_id ?? null;
     const { valid, errors } = validateMoviePayload(merged);
 
     if (!valid) {

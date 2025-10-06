@@ -33,6 +33,7 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    payload.mux_asset_id = payload.mux_asset_id ?? payload.mux_video_id ?? payload.mux_playback_id ?? null;
     const { valid, errors } = validateMoviePayload(payload);
 
     if (!valid) {

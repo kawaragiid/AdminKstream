@@ -39,6 +39,13 @@ export async function PUT(request, { params }) {
 
     const payload = await request.json();
     const merged = { ...existing, ...payload };
+    merged.mux_asset_id = merged.mux_asset_id ?? merged.mux_video_id ?? merged.mux_playback_id ?? null;
+    if (Array.isArray(merged.episodes)) {
+      merged.episodes = merged.episodes.map((episode) => ({
+        ...episode,
+        mux_asset_id: episode?.mux_asset_id ?? episode?.mux_video_id ?? episode?.mux_playback_id ?? null,
+      }));
+    }
     const { valid, errors } = validateSeriesPayload(merged);
 
     if (!valid) {

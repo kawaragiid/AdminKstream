@@ -335,7 +335,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const vttFile = new File([vttBlob], file.name.replace(/\.srt$/i, ".vtt"), { type: "text/vtt" });
       setSubtitleFiles((prev) => ({ ...prev, [index]: vttFile }));
       updateSubtitle(index, "url", vttFile.name);
-      setMessage({ type: "info", text: "Subtitle siap diunggah bersama paket. Tekan ‘Upload ke Mux’." });
+      setMessage({ type: "info", text: "Subtitle siap diunggah bersama paket. Tekan 'Upload ke Mux'." });
     } catch (error) {
       console.error(error);
       setMessage({ type: "error", text: "Gagal membaca file subtitle." });
@@ -390,8 +390,12 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       setMessage({ type: "success", text: "Movie berhasil disimpan." });
 
       // Sinkronisasi subtitle ke Mux jika tersedia
-      if (formData.mux_asset_id && formData.subtitles?.length) {
-        await syncSubtitlesToMux(formData.mux_asset_id, formData.subtitles);
+      const assetId = formData.mux_asset_id || formData.mux_video_id || formData.mux_playback_id;
+
+      if (assetId && formData.subtitles?.length) {
+        await syncSubtitlesToMux(assetId, formData.subtitles);
+      } else {
+        console.warn("[mux] Subtitle sync skipped - assetId not found or subtitles empty");
       }
 
       if (!initialData?.id) {
@@ -668,4 +672,3 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     </form>
   );
 }
-

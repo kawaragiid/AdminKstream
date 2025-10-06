@@ -33,6 +33,13 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    payload.mux_asset_id = payload.mux_asset_id ?? payload.mux_video_id ?? payload.mux_playback_id ?? null;
+    if (Array.isArray(payload.episodes)) {
+      payload.episodes = payload.episodes.map((episode) => ({
+        ...episode,
+        mux_asset_id: episode?.mux_asset_id ?? episode?.mux_video_id ?? episode?.mux_playback_id ?? null,
+      }));
+    }
     const { valid, errors } = validateSeriesPayload(payload);
 
     if (!valid) {
