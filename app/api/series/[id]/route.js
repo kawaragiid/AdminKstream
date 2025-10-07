@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSeries, updateSeries, deleteSeries } from "@/lib/firestoreService";
-import { deleteAsset, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
+import { deleteAsset, isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { getSessionUser } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -39,22 +39,28 @@ export async function PUT(request, { params }) {
 
     const payload = await request.json();
     const merged = { ...existing, ...payload };
-    merged.mux_asset_id = (await resolveAssetId([
-      merged.mux_asset_id,
-      merged.mux_video_id,
-      merged.mux_playback_id,
-    ])) ?? null;
+    const muxInfo = await normalizeMuxMetadata({
+      assetId: merged.mux_asset_id,
+      playbackId: merged.mux_playback_id,
+      videoId: merged.mux_video_id,
+    });
+    merged.mux_asset_id = muxInfo.assetId;
+    merged.mux_playback_id = muxInfo.playbackId;
+    merged.mux_video_id = muxInfo.videoId;
+
     if (Array.isArray(merged.episodes)) {
       merged.episodes = await Promise.all(
         merged.episodes.map(async (episode) => {
-          const fallbackIds = [
-            episode?.mux_asset_id,
-            episode?.mux_video_id,
-            episode?.mux_playback_id,
-          ];
+          const episodeMux = await normalizeMuxMetadata({
+            assetId: episode?.mux_asset_id,
+            playbackId: episode?.mux_playback_id,
+            videoId: episode?.mux_video_id,
+          });
           return {
             ...episode,
-            mux_asset_id: (await resolveAssetId(fallbackIds)) ?? null,
+            mux_asset_id: episodeMux.assetId,
+            mux_playback_id: episodeMux.playbackId,
+            mux_video_id: episodeMux.videoId,
           };
         })
       );

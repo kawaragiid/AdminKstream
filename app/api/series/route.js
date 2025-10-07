@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listSeries, createSeries } from "@/lib/firestoreService";
-import { resolveAssetId } from "@/lib/muxService";
+import { normalizeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { getSessionUser } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -34,22 +34,28 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
-    payload.mux_asset_id = (await resolveAssetId([
-      payload.mux_asset_id,
-      payload.mux_video_id,
-      payload.mux_playback_id,
-    ])) ?? null;
+    const muxInfo = await normalizeMuxMetadata({
+      assetId: payload.mux_asset_id,
+      playbackId: payload.mux_playback_id,
+      videoId: payload.mux_video_id,
+    });
+    payload.mux_asset_id = muxInfo.assetId;
+    payload.mux_playback_id = muxInfo.playbackId;
+    payload.mux_video_id = muxInfo.videoId;
+
     if (Array.isArray(payload.episodes)) {
       payload.episodes = await Promise.all(
         payload.episodes.map(async (episode) => {
-          const fallbackIds = [
-            episode?.mux_asset_id,
-            episode?.mux_video_id,
-            episode?.mux_playback_id,
-          ];
+          const episodeMux = await normalizeMuxMetadata({
+            assetId: episode?.mux_asset_id,
+            playbackId: episode?.mux_playback_id,
+            videoId: episode?.mux_video_id,
+          });
           return {
             ...episode,
-            mux_asset_id: (await resolveAssetId(fallbackIds)) ?? null,
+            mux_asset_id: episodeMux.assetId,
+            mux_playback_id: episodeMux.playbackId,
+            mux_video_id: episodeMux.videoId,
           };
         })
       );
