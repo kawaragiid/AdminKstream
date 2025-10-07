@@ -48,10 +48,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   useEffect(() => {
     setFormData({ ...defaultMovie, ...initialData });
     setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-    setSubtitleUploadStatus(
-      (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
+    const hasInitialSubtitles = (initialData?.subtitles ?? []).some(
+      (item) => item?.url && /^https?:\/\//i.test(item.url)
     );
-    setSubtitleSyncStatus("idle");
+    setSubtitleUploadStatus(hasInitialSubtitles ? "success" : "idle");
+    setSubtitleSyncStatus(hasInitialSubtitles ? "success" : "idle");
     setCurrentVideoFile(null);
     setUploadProgress(0);
     setThumbnailFile(null);
