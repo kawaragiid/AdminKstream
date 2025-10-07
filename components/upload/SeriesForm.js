@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CONTENT_CATEGORIES, SUBTITLE_LANGUAGES } from "@/utils/constants";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
@@ -24,6 +24,7 @@ const newEpisodeDraft = (index = 0) => ({
   mux_asset_id: "",
   mux_video_id: "",
   mux_upload_id: "",
+  fileHash: null,
   thumbnail: "",
   trailer: "",
   subtitles: [],
@@ -39,7 +40,7 @@ function uid() {
 // ======================================================================
 // Komponen Subtitle Editor
 // ======================================================================
-function SubtitleEditor({ subtitles, onChange, messageSetter }) {
+function SubtitleEditor({ subtitles, onChange, messageSetter, onUploadStart, onUploadSuccess, onUploadError }) {
   const addSubtitle = () => onChange([...(subtitles ?? []), emptySubtitle]);
 
   const updateSubtitle = (index, field, value) => {
@@ -57,6 +58,7 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
     try {
+      onUploadStart?.(index, file);
       const text = await file.text();
       const mimeType = file.type || (file.name.endsWith(".srt") ? "application/x-subrip" : undefined);
       let converted = text;
@@ -74,6 +76,12 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
       const json = await res.json();
       const url = json?.data?.url;
       updateSubtitle(index, "url", url ?? "");
+      onUploadSuccess?.({
+        index,
+        url: url ?? "",
+        lang: subtitles?.[index]?.lang ?? emptySubtitle.lang,
+        label: subtitles?.[index]?.label ?? subtitles?.[index]?.lang ?? emptySubtitle.label,
+      });
       messageSetter?.({
         type: "success",
         text: "Subtitle siap dan URL publik tersimpan.",
@@ -81,6 +89,7 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
     } catch (error) {
       console.error(error);
       messageSetter?.({ type: "error", text: "Gagal mengonversi subtitle." });
+      onUploadError?.(error);
     }
   };
 
@@ -130,12 +139,87 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   const [episodeDraft, setEpisodeDraft] = useState(newEpisodeDraft());
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentVideoFile, setCurrentVideoFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState("idle");
+  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState("idle");
+  const [subtitleSyncStatus, setSubtitleSyncStatus] = useState("idle");
+  const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
+  const lastFetchedPlaybackRef = useRef(null);
 
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
+
+  useEffect(() => {
+    const subtitleList = episodeDraft.subtitles ?? [];
+    const hasValidSubtitle = subtitleList.some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    if (hasValidSubtitle) {
+      setSubtitleUploadStatus((prev) => (prev === "success" ? prev : "success"));
+    } else if (!subtitleList.length) {
+      setSubtitleUploadStatus("idle");
+    }
+  }, [episodeDraft.subtitles]);
+
+  useEffect(() => {
+    if (editingEpisodeIndex === null) return;
+    const playback = episodeDraft.mux_playback_id ?? episodeDraft.mux_video_id ?? "";
+    const currentAssetId = episodeDraft.mux_asset_id ?? null;
+    if (!playback && !currentAssetId) return;
+    if (currentAssetId && lastFetchedPlaybackRef.current === playback) return;
+    let cancelled = false;
+
+    const ensureMuxMetadata = async () => {
+      let assetId = currentAssetId;
+      if (!assetId && playback) {
+        assetId = await fetchAssetIdFromPlayback(playback);
+      }
+      if (!assetId || cancelled) return;
+
+      try {
+        const res = await fetch(`/api/mux/assets/${assetId}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+
+        const playbackFromMux =
+          json?.data?.playback_ids?.find((pb) => pb?.policy === "public")?.id ??
+          json?.data?.playback_ids?.[0]?.id ??
+          playback ??
+          null;
+
+        setEpisodeDraft((prev) => {
+          const nextPlayback = playbackFromMux ?? prev.mux_playback_id ?? prev.mux_video_id ?? "";
+          if (prev.mux_asset_id === assetId && prev.mux_playback_id === nextPlayback) {
+            return prev;
+          }
+          lastFetchedPlaybackRef.current = nextPlayback || playback || null;
+          return {
+            ...prev,
+            mux_asset_id: assetId,
+            mux_playback_id: nextPlayback,
+            mux_video_id: nextPlayback || prev.mux_video_id || prev.mux_playback_id || "",
+          };
+        });
+      } catch (error) {
+        console.warn("[MUX DEBUG] Gagal memperbarui metadata episode dari Mux", error?.message ?? error);
+      }
+    };
+
+    ensureMuxMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editingEpisodeIndex, episodeDraft.mux_asset_id, episodeDraft.mux_playback_id, episodeDraft.mux_video_id]);
 
   // ====================================================================
   // Helper Functions
   // ====================================================================
+  const computeFileHash = async (file) => {
+    if (!file) return null;
+    const buffer = await file.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", buffer);
+    const hashArray = Array.from(new Uint8Array(digest));
+    const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    return { sha256, size: file.size };
+  };
+
   const normalizePlaybackValue = (raw) => {
     if (!raw) return "";
     let v = String(raw).trim();
@@ -170,10 +254,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   }
 
   async function syncSubtitlesToMux({ assetId, playbackId, subtitles = [] } = {}) {
-    if (!Array.isArray(subtitles) || !subtitles.length) return;
+    if (!Array.isArray(subtitles) || !subtitles.length) return false;
     let targetAssetId = assetId ?? null;
     if (!targetAssetId && playbackId) targetAssetId = await fetchAssetIdFromPlayback(playbackId);
-    if (!targetAssetId) return;
+    if (!targetAssetId) return false;
 
     try {
       const validTracks = subtitles
@@ -184,7 +268,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           name: s.label || s.lang || "Subtitle",
         }));
 
-      if (!validTracks.length) return;
+      if (!validTracks.length) return false;
 
       const res = await fetch("/api/mux/text-tracks", {
         method: "POST",
@@ -193,12 +277,68 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       });
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, json);
-      else console.log("[MUX DEBUG] Subtitle sync success", targetAssetId, json);
+      if (!res.ok) {
+        console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, json);
+        return false;
+      }
+      console.log("[MUX DEBUG] Subtitle sync success", targetAssetId, json);
+      return true;
     } catch (err) {
       console.warn("[MUX DEBUG] Subtitle sync error", err?.message ?? err);
+      return false;
     }
   }
+
+  const lookupExistingMuxAsset = async (fingerprint) => {
+    if (!fingerprint?.sha256 || !fingerprint?.size) return null;
+    try {
+      const res = await fetch("/api/uploads/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fingerprint, type: "episode" }),
+      });
+      if (!res.ok) return null;
+      const json = await res.json().catch(() => ({}));
+      return json?.data ?? null;
+    } catch (error) {
+      console.warn("[MUX DEBUG] lookupExistingMuxAsset error", error?.message ?? error);
+      return null;
+    }
+  };
+
+  const persistEpisodeMetadata = async (episodePayload, { quiet = false } = {}) => {
+    if (!initialData?.id || !episodePayload?.episodeId) return null;
+    try {
+      const res = await fetch(`/api/series/${initialData.id}/episodes/${episodePayload.episodeId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(episodePayload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (!quiet) {
+          setMessage({ type: "error", text: json?.error ?? "Gagal memperbarui metadata episode." });
+        }
+        return null;
+      }
+      const savedEpisode = json?.data ?? episodePayload;
+      setFormData((prev) => {
+        const episodes = [...(prev.episodes ?? [])];
+        const index = episodes.findIndex((episode) => episode?.episodeId === savedEpisode.episodeId);
+        if (index >= 0) {
+          episodes[index] = savedEpisode;
+          return { ...prev, episodes };
+        }
+        return prev;
+      });
+      return savedEpisode;
+    } catch (error) {
+      if (!quiet) {
+        setMessage({ type: "error", text: error?.message ?? "Gagal menyimpan metadata episode." });
+      }
+      return null;
+    }
+  };
 
   const retryAutofillFromMux = async () => {
     if (!episodeDraft.mux_upload_id) return;
@@ -217,11 +357,13 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           mux_video_id: p,
           mux_asset_id: assetId ?? prev.mux_asset_id ?? null,
         }));
+        setUploadStatus("success");
         setMessage({ type: "success", text: "Playback ID berhasil diisi otomatis." });
       } else {
         setMessage({ type: "warning", text: "Playback ID belum tersedia. Coba lagi." });
       }
     } catch (err) {
+      setUploadStatus("error");
       setMessage({ type: "error", text: err.message || "Gagal mengisi otomatis." });
     }
   };
@@ -231,11 +373,40 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   // ====================================================================
   const handleDirectUpload = async (file) => {
     if (!file) return;
-    setMessage({ type: "info", text: "Mengunggah video episode ke Mux..." });
+    setMessage({ type: "info", text: "Memproses video episode sebelum upload ke Mux..." });
+    setUploadStatus("hashing");
     setUploadProgress(1);
     setCurrentVideoFile(file);
 
     try {
+      const fingerprint = await computeFileHash(file);
+
+      let nextEpisode = { ...episodeDraft, fileHash: fingerprint };
+
+      const existing = await lookupExistingMuxAsset(fingerprint);
+      if (existing?.mux_playback_id) {
+        nextEpisode = {
+          ...nextEpisode,
+          mux_playback_id: existing.mux_playback_id,
+          mux_video_id: existing.mux_playback_id,
+          mux_asset_id: existing.mux_asset_id ?? nextEpisode.mux_asset_id ?? null,
+        };
+        setEpisodeDraft(nextEpisode);
+        setSubtitleSyncStatus("idle");
+        setUploadStatus("success");
+        setUploadProgress(0);
+        setCurrentVideoFile(null);
+        setMessage({ type: "success", text: "Video sudah ada di Mux. Playback ID terisi otomatis." });
+        const savedEpisode = await persistEpisodeMetadata(nextEpisode, { quiet: true });
+        if (savedEpisode) {
+          setEpisodeDraft(savedEpisode);
+        }
+        return;
+      }
+
+      setUploadStatus("uploading");
+      setMessage({ type: "info", text: "Mengunggah video episode ke Mux..." });
+
       const response = await fetch("/api/mux/direct-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -246,6 +417,11 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       const uploadUrl = result.data?.url;
       const uploadId = result.data?.id;
       if (!uploadUrl) throw new Error("Tidak mendapatkan upload URL dari Mux.");
+
+      if (uploadId) {
+        nextEpisode.mux_upload_id = uploadId;
+        setEpisodeDraft((prev) => ({ ...prev, mux_upload_id: uploadId }));
+      }
 
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -260,6 +436,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         xhr.onerror = () => reject(new Error("Network error"));
         xhr.send(file);
       });
+
+      setUploadProgress(100);
 
       let playbackId = null;
       let assetId = null;
@@ -282,28 +460,77 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       if (playbackId && !assetId) assetId = await fetchAssetIdFromPlayback(playbackId);
       if (!playbackId || !assetId) throw new Error("Gagal mendapatkan playbackId / assetId dari Mux.");
 
-      await syncSubtitlesToMux({
-        assetId,
-        playbackId,
-        subtitles: episodeDraft.subtitles ?? [],
-      });
-
-      setEpisodeDraft((prev) => ({
-        ...prev,
+      nextEpisode = {
+        ...nextEpisode,
         mux_playback_id: playbackId,
         mux_video_id: playbackId,
         mux_asset_id: assetId,
-      }));
+      };
+
+      setEpisodeDraft(nextEpisode);
+      setSubtitleSyncStatus("idle");
+      setUploadStatus("success");
       setUploadProgress(0);
       setCurrentVideoFile(null);
       setMessage({
         type: "success",
         text: "Upload episode berhasil. Playback ID terisi otomatis.",
       });
+
+      const savedEpisode = await persistEpisodeMetadata(nextEpisode, { quiet: true });
+      if (savedEpisode) {
+        setEpisodeDraft(savedEpisode);
+      }
     } catch (err) {
       console.error(err);
+      setUploadStatus("error");
       setUploadProgress(0);
       setMessage({ type: "error", text: err.message || "Gagal upload episode." });
+    }
+  };
+
+  const handleSubtitleSync = async () => {
+    const validTracks = (episodeDraft.subtitles ?? []).filter((item) => item?.url && /^https?:\/\//i.test(item.url));
+    if (!validTracks.length) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "warning", text: "Tambahkan subtitle dengan URL publik sebelum mengirim ke Mux." });
+      return;
+    }
+
+    const assetId = episodeDraft.mux_asset_id || episodeDraft.mux_video_id || episodeDraft.mux_playback_id;
+    if (!assetId) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "warning", text: "Asset ID Mux belum tersedia. Upload video terlebih dahulu." });
+      return;
+    }
+
+    setSubtitleSyncStatus("loading");
+    setIsSyncingSubtitles(true);
+    try {
+      const ok = await syncSubtitlesToMux({
+        assetId,
+        playbackId: episodeDraft.mux_playback_id,
+        subtitles: episodeDraft.subtitles ?? [],
+      });
+      if (!ok) {
+        setSubtitleSyncStatus("error");
+        setMessage({ type: "error", text: "Gagal mengirim subtitle ke Mux." });
+        return;
+      }
+      setSubtitleSyncStatus("success");
+      setMessage({ type: "success", text: "Subtitle berhasil dikirim ke Mux." });
+      const savedEpisode = await persistEpisodeMetadata(
+        { ...episodeDraft, subtitles: episodeDraft.subtitles ?? [] },
+        { quiet: true }
+      );
+      if (savedEpisode) {
+        setEpisodeDraft(savedEpisode);
+      }
+    } catch (error) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "error", text: error?.message ?? "Gagal mengirim subtitle ke Mux." });
+    } finally {
+      setIsSyncingSubtitles(false);
     }
   };
 
@@ -324,33 +551,43 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
 
     // Jika series sudah ada di server
     if (initialData?.id) {
+      const isExistingEpisode =
+        Boolean(draft.episodeId) &&
+        Boolean((formData.episodes ?? []).find((episode) => episode?.episodeId === draft.episodeId));
+
       try {
-        const res = await fetch(`/api/series/${initialData.id}/episodes`, {
-          method: "POST",
+        const endpoint = isExistingEpisode
+          ? `/api/series/${initialData.id}/episodes/${draft.episodeId}`
+          : `/api/series/${initialData.id}/episodes`;
+        const method = isExistingEpisode ? "PUT" : "POST";
+        const res = await fetch(endpoint, {
+          method,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(draft),
         });
         const json = await res.json();
         if (!res.ok) {
           setErrors(json.details ?? {});
-          throw new Error(json.error ?? "Gagal menambah episode.");
+          throw new Error(json.error ?? (isExistingEpisode ? "Gagal memperbarui episode." : "Gagal menambah episode."));
         }
         const saved = json.data ?? draft;
         setFormData((prev) => {
           const episodes = [...(prev.episodes ?? [])];
-          episodes[editingEpisodeIndex] = saved;
+          if (editingEpisodeIndex !== null && editingEpisodeIndex < episodes.length) {
+            episodes[editingEpisodeIndex] = saved;
+          } else if (isExistingEpisode) {
+            const targetIndex = episodes.findIndex((episode) => episode?.episodeId === saved.episodeId);
+            if (targetIndex >= 0) episodes[targetIndex] = saved;
+            else episodes.push(saved);
+          } else {
+            episodes.push(saved);
+          }
           return { ...prev, episodes };
         });
-        setMessage({ type: "success", text: "Episode berhasil ditambahkan." });
-
-        const assetId = draft.mux_asset_id || draft.mux_video_id || draft.mux_playback_id;
-        if (assetId && draft.subtitles?.length) {
-          await syncSubtitlesToMux({
-            assetId,
-            playbackId: draft.mux_playback_id,
-            subtitles: draft.subtitles,
-          });
-        }
+        setMessage({
+          type: "success",
+          text: isExistingEpisode ? "Episode berhasil diperbarui." : "Episode berhasil ditambahkan.",
+        });
       } catch (err) {
         setMessage({ type: "error", text: err.message });
         return;
@@ -369,17 +606,42 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     closeEpisodeEditor();
   };
 
+  const subtitleEntries = episodeDraft.subtitles ?? [];
+  const hasSubtitleUrl = subtitleEntries.some((item) => item?.url && /^https?:\/\//i.test(item.url));
+  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang);
+  const canSyncSubtitles =
+    hasSubtitleUrl && Boolean(episodeDraft.mux_asset_id || episodeDraft.mux_video_id || episodeDraft.mux_playback_id);
+  const hasMuxPlayback = Boolean(episodeDraft.mux_playback_id ?? episodeDraft.mux_video_id);
+  const videoReady = uploadStatus === "success" || hasMuxPlayback;
+  const subtitlesUploadReady = !subtitlesConfigured || (hasSubtitleUrl && subtitleUploadStatus === "success");
+  const subtitlesSyncReady = !subtitlesConfigured || subtitleSyncStatus === "success";
+  const canSaveEpisode =
+    Boolean(episodeDraft.title) &&
+    Boolean(episodeDraft.description) &&
+    videoReady &&
+    subtitlesUploadReady &&
+    subtitlesSyncReady;
+
   const openEpisodeEditor = (index = null) => {
+    lastFetchedPlaybackRef.current = null;
     if (index === null) {
       setEpisodeDraft(newEpisodeDraft(formData.episodes?.length ?? 0));
       setEditingEpisodeIndex(formData.episodes?.length ?? 0);
       setCurrentVideoFile(null);
+      setUploadStatus("idle");
+      setSubtitleUploadStatus("idle");
+      setSubtitleSyncStatus("idle");
       return;
     }
     const selected = formData.episodes?.[index];
     setEpisodeDraft({ ...selected });
     setEditingEpisodeIndex(index);
     setCurrentVideoFile(null);
+    const hasPlayback = Boolean(selected?.mux_playback_id ?? selected?.mux_video_id);
+    const hasValidSubtitles = (selected?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    setUploadStatus(hasPlayback ? "success" : "idle");
+    setSubtitleUploadStatus(hasValidSubtitles ? "success" : "idle");
+    setSubtitleSyncStatus("idle");
   };
 
   const closeEpisodeEditor = () => {
@@ -387,14 +649,51 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     setEpisodeDraft(newEpisodeDraft());
     setUploadProgress(0);
     setCurrentVideoFile(null);
+    setUploadStatus("idle");
+    setSubtitleUploadStatus("idle");
+    setSubtitleSyncStatus("idle");
+    setIsSyncingSubtitles(false);
+    lastFetchedPlaybackRef.current = null;
   };
 
-  const deleteEpisode = (index) => {
+  const deleteEpisode = async (index) => {
+    const targetEpisode = formData.episodes?.[index];
+    if (!targetEpisode) return;
+
+    const confirmed = window.confirm(
+      `Hapus episode "${targetEpisode.title ?? `Episode ${targetEpisode.epNumber ?? index + 1}`}"?` +
+        (initialData?.id ? " Video di Mux juga akan dihapus." : "")
+    );
+    if (!confirmed) return;
+
+    if (initialData?.id && targetEpisode?.episodeId) {
+      try {
+        const res = await fetch(`/api/series/${initialData.id}/episodes/${targetEpisode.episodeId}`, {
+          method: "DELETE",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error ?? "Gagal menghapus episode.");
+        }
+        setMessage({ type: "success", text: "Episode berhasil dihapus." });
+      } catch (error) {
+        setMessage({ type: "error", text: error?.message ?? "Gagal menghapus episode." });
+        return;
+      }
+    }
+
     setFormData((prev) => {
       const episodes = [...(prev.episodes ?? [])];
       episodes.splice(index, 1);
       return { ...prev, episodes };
     });
+    setMessage({ type: "success", text: "Episode berhasil dihapus." });
+
+    if (editingEpisodeIndex === index) {
+      closeEpisodeEditor();
+    } else if (editingEpisodeIndex !== null && editingEpisodeIndex > index) {
+      setEditingEpisodeIndex((prevIndex) => (prevIndex !== null ? prevIndex - 1 : prevIndex));
+    }
   };
 
   // ====================================================================
@@ -709,7 +1008,38 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               />
             </label>
 
-            <SubtitleEditor subtitles={episodeDraft.subtitles} onChange={(value) => setEpisodeDraft((prev) => ({ ...prev, subtitles: value }))} messageSetter={setMessage} />
+            <SubtitleEditor
+              subtitles={episodeDraft.subtitles}
+              onChange={(value) => {
+                setEpisodeDraft((prev) => ({ ...prev, subtitles: value }));
+                setSubtitleSyncStatus("idle");
+              }}
+              messageSetter={setMessage}
+              onUploadStart={() => setSubtitleUploadStatus("processing")}
+              onUploadSuccess={() => {
+                setSubtitleUploadStatus("success");
+                setSubtitleSyncStatus("idle");
+              }}
+              onUploadError={() => setSubtitleUploadStatus("error")}
+            />
+
+            <div className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400">
+              <div>
+                <p className="font-medium text-slate-200">Sinkronisasi Subtitle</p>
+                <p className="text-[11px] text-slate-500">
+                  Pastikan subtitle sudah memiliki URL publik sebelum mengirim ke Mux.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleSubtitleSync}
+                disabled={!canSyncSubtitles || isSyncingSubtitles}
+                title={!canSyncSubtitles ? "Subtitle harus memiliki URL publik dan asset Mux harus tersedia." : undefined}
+                className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
+              >
+                {isSyncingSubtitles ? "Mengirim..." : "Kirim Subtitle ke Mux"}
+              </button>
+            </div>
 
             <div className="flex items-center justify-end gap-3">
               <button type="button" onClick={closeEpisodeEditor} className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:border-slate-500 hover:text-white">
@@ -718,7 +1048,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               <button
                 type="button"
                 onClick={persistEpisodeDraft}
-                disabled={!episodeDraft.title || !episodeDraft.description || !episodeDraft.mux_playback_id}
+                disabled={!canSaveEpisode}
+                title={!canSaveEpisode ? "Pastikan video terunggah dan subtitle tersinkron sebelum menyimpan." : undefined}
                 className="rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 disabled:bg-slate-700"
               >
                 Simpan Episode
