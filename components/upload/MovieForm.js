@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CONTENT_CATEGORIES,
   SUBTITLE_LANGUAGES,
@@ -27,16 +27,102 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const [message, setMessage] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [videoFile, setVideoFile] = useState(null);
   const [trailerStart, setTrailerStart] = useState("");
   const [trailerEnd, setTrailerEnd] = useState("");
   const [thumbnailFile, setThumbnailFile] = useState(null);
-  const [subtitleFiles, setSubtitleFiles] = useState({}); // map index -> File(VTT)
+  const [currentVideoFile, setCurrentVideoFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadMode, setUploadMode] = useState("upload");
+  const [uploadStatus, setUploadStatus] = useState(
+    initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle"
+  );
+  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState(
+    (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
+  );
+  const [subtitleSyncStatus, setSubtitleSyncStatus] = useState("idle");
+  const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
 
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadMode, setUploadMode] = useState('upload');
+  const lastFetchedPlaybackRef = useRef(null);
+
+  useEffect(() => {
+    setFormData({ ...defaultMovie, ...initialData });
+    setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
+    setSubtitleUploadStatus(
+      (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
+    );
+    setSubtitleSyncStatus("idle");
+    setCurrentVideoFile(null);
+    setUploadProgress(0);
+    setThumbnailFile(null);
+    setIsSyncingSubtitles(false);
+  }, [initialData]);
+  useEffect(() => {
+    const hasValidSubtitle = (formData.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    if (hasValidSubtitle) {
+      setSubtitleUploadStatus((prev) => (prev === "success" ? prev : "success"));
+    } else if (!(formData.subtitles ?? []).length) {
+      setSubtitleUploadStatus("idle");
+    }
+  }, [formData.subtitles]);
+
+  useEffect(() => {
+    if ((formData.mux_playback_id || formData.mux_video_id) && !["uploading", "hashing"].includes(uploadStatus)) {
+      setUploadStatus("success");
+    }
+  }, [formData.mux_playback_id, formData.mux_video_id, uploadStatus]);
+
+  useEffect(() => {
+    if (!initialData?.id) return;
+    const playback = formData.mux_playback_id ?? formData.mux_video_id ?? "";
+    const assetId = formData.mux_asset_id ?? null;
+    if (!playback && !assetId) return;
+    if (assetId && lastFetchedPlaybackRef.current === playback) return;
+    let cancelled = false;
+
+    const ensureMuxMetadata = async () => {
+      let targetAssetId = assetId;
+      if (!targetAssetId && playback) {
+        targetAssetId = await fetchAssetIdFromPlayback(playback);
+      }
+      if (!targetAssetId || cancelled) return;
+
+      try {
+        const res = await fetch(`/api/mux/assets/${targetAssetId}`);
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+
+        const playbackFromAsset =
+          json?.data?.playback_ids?.find((pb) => pb?.policy === "public")?.id ??
+          json?.data?.playback_ids?.[0]?.id ??
+          playback ??
+          null;
+
+        setFormData((prev) => {
+          const nextPlayback = playbackFromAsset ?? prev.mux_playback_id ?? prev.mux_video_id ?? "";
+          if (prev.mux_asset_id === targetAssetId && prev.mux_playback_id === nextPlayback) {
+            return prev;
+          }
+          lastFetchedPlaybackRef.current = nextPlayback || playback || null;
+          return {
+            ...prev,
+            mux_asset_id: targetAssetId,
+            mux_playback_id: nextPlayback,
+            mux_video_id: nextPlayback || prev.mux_video_id || prev.mux_playback_id || "",
+          };
+        });
+        setUploadStatus("success");
+      } catch (error) {
+        console.warn("[MUX DEBUG] Failed refreshing movie metadata from Mux", error?.message ?? error);
+      }
+    };
+
+    ensureMuxMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData?.id, formData.mux_asset_id, formData.mux_playback_id, formData.mux_video_id]);
   
   async function computeFileHash(file) {
     const buf = await file.arrayBuffer();
@@ -46,19 +132,68 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     return { sha256, size: file.size };
   }
 
+  const handleSubtitleSync = async () => {
+    const validTracks = (formData.subtitles ?? []).filter((item) => item?.url && /^https?:\/\//i.test(item.url));
+    if (!validTracks.length) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "warning", text: "Tambahkan subtitle dengan URL publik sebelum mengirim ke Mux." });
+      return;
+    }
+
+    const assetId = formData.mux_asset_id || formData.mux_video_id || formData.mux_playback_id;
+    if (!assetId) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "warning", text: "Asset ID Mux belum tersedia. Unggah video terlebih dahulu." });
+      return;
+    }
+
+    setSubtitleSyncStatus("loading");
+    setIsSyncingSubtitles(true);
+    try {
+      const ok = await syncSubtitlesToMux({
+        assetId,
+        playbackId: formData.mux_playback_id,
+        subtitles: formData.subtitles ?? [],
+      });
+      if (!ok) {
+        setSubtitleSyncStatus("error");
+        setMessage({ type: "error", text: "Gagal mengirim subtitle ke Mux." });
+        return;
+      }
+      setSubtitleSyncStatus("success");
+      setMessage({ type: "success", text: "Subtitle berhasil dikirim ke Mux." });
+    } catch (error) {
+      setSubtitleSyncStatus("error");
+      setMessage({ type: "error", text: error?.message ?? "Gagal mengirim subtitle ke Mux." });
+    } finally {
+      setIsSyncingSubtitles(false);
+    }
+  };
+
+  const subtitleEntries = formData.subtitles ?? [];
+  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang);
+  const hasValidSubtitleUrl = subtitleEntries.some((item) => item?.url && /^https?:\/\//i.test(item.url));
+  const videoReady = uploadStatus === "success" || Boolean(formData.mux_playback_id ?? formData.mux_video_id);
+  const subtitlesUploadReady = !subtitlesConfigured || (hasValidSubtitleUrl && subtitleUploadStatus === "success");
+  const subtitlesSyncReady = !subtitlesConfigured || subtitleSyncStatus === "success";
+  const canSyncSubtitles = hasValidSubtitleUrl && Boolean(formData.mux_asset_id || formData.mux_video_id || formData.mux_playback_id);
+  const canSaveMovie = videoReady && subtitlesUploadReady && subtitlesSyncReady;
+
   const handleDirectUpload = async (file) => {
     if (!file) return;
-    setUploading(true);
-    setMessage(null);
+    setMessage({ type: "info", text: "Memproses video sebelum diunggah ke Mux..." });
+    setUploadStatus("hashing");
+    setUploadProgress(1);
+    setCurrentVideoFile(file);
 
     try {
-      // 1) Dedup check by fingerprint
       const fp = await computeFileHash(file);
+
       try {
-        const foundRes = await fetch('/api/uploads/lookup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fingerprint: fp, type: 'movie' }),
+        const foundRes = await fetch("/api/uploads/lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fingerprint: fp, type: "movie" }),
         });
         if (foundRes.ok) {
           const found = await foundRes.json();
@@ -70,54 +205,71 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               mux_video_id: match.mux_playback_id,
               mux_asset_id: match.mux_asset_id ?? prev.mux_asset_id ?? null,
               fileHash: fp,
-              thumbnail: prev.thumbnail || match.thumbnail || '',
-              trailer: prev.trailer || match.trailer || '',
+              thumbnail: prev.thumbnail || match.thumbnail || "",
+              trailer: prev.trailer || match.trailer || "",
             }));
-            setMessage({ type: 'info', text: 'Video sudah ada di Mux. Menggunakan asset yang tersedia.' });
+            setUploadStatus("success");
+            setUploadProgress(0);
+            setCurrentVideoFile(null);
+            setSubtitleSyncStatus("idle");
+            setMessage({ type: "info", text: "Video sudah ada di Mux. Playback ID terisi otomatis." });
             return;
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore lookup errors */
+      }
 
-      // 2) Create direct upload on Mux
-      const response = await fetch('/api/mux/direct-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'movie' }),
+      const response = await fetch("/api/mux/direct-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "movie" }),
       });
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.error ?? 'Gagal membuat direct upload.');
+        throw new Error(result.error ?? "Gagal membuat direct upload.");
       }
 
       if (result.warning) {
-        const fallbackPlayback = result.data?.playback_ids?.[0]?.id ?? '';
+        const fallbackPlayback = result.data?.playback_ids?.[0]?.id ?? "";
         if (fallbackPlayback) {
-          setFormData((prev) => ({ ...prev, mux_playback_id: fallbackPlayback, mux_video_id: fallbackPlayback }));
+          setFormData((prev) => ({
+            ...prev,
+            mux_playback_id: fallbackPlayback,
+            mux_video_id: fallbackPlayback,
+          }));
+          setUploadStatus("success");
+          setSubtitleSyncStatus("idle");
+        } else {
+          setUploadStatus("error");
         }
-        setMessage({ type: 'info', text: 'MUX belum dikonfigurasi. Playback ID mock digunakan.' });
+        setUploadProgress(0);
+        setCurrentVideoFile(null);
+        setMessage({ type: "info", text: "MUX belum dikonfigurasi. Playback ID mock digunakan." });
         return;
       }
-
-      setMessage({ type: 'info', text: 'Mengunggah video ke Mux...' });
 
       const uploadUrl = result.data?.url;
       const uploadId = result.data?.id;
       if (!uploadUrl) {
+        setUploadStatus("error");
+        setUploadProgress(0);
         setMessage({
-          type: 'warning',
-          text: 'Tidak mendapatkan upload URL dari Mux. Coba ulang atau unggah via dashboard Mux.',
+          type: "warning",
+          text: "Tidak mendapatkan upload URL dari Mux. Coba ulang atau unggah via dashboard Mux.",
         });
         return;
       }
 
+      setUploadStatus("uploading");
+      setMessage({ type: "info", text: "Mengunggah video ke Mux..." });
+
       try {
         let ok = false;
-        // Coba direct PUT dengan progress via XHR terlebih dahulu
         try {
           await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.open('PUT', uploadUrl);
+            xhr.open("PUT", uploadUrl);
             xhr.upload.onprogress = (e) => {
               if (e.lengthComputable) {
                 const percent = Math.round((e.loaded / e.total) * 100);
@@ -126,60 +278,57 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             };
             xhr.onload = () => {
               setUploadProgress(100);
-              (xhr.status >= 200 && xhr.status < 300) ? resolve(true) : reject(new Error('Upload gagal'));
+              xhr.status >= 200 && xhr.status < 300 ? resolve(true) : reject(new Error("Upload gagal"));
             };
-            xhr.onerror = () => reject(new Error('Network error'));
+            xhr.onerror = () => reject(new Error("Network error"));
             xhr.send(file);
           });
           ok = true;
-        } catch (_) {}
+        } catch {}
 
-        // Jika gagal, coba POST (beberapa URL Mux menerima POST)
         if (!ok) {
           try {
-            const postRes = await fetch(uploadUrl, { method: 'POST', body: file });
+            const postRes = await fetch(uploadUrl, { method: "POST", body: file });
             ok = postRes.ok;
-          } catch (_) {}
+          } catch {}
         }
 
-        // Jika masih gagal karena CORS, pakai proxy server-side
         if (!ok) {
           const proxyUrl = `/api/mux/proxy-upload?method=PUT&url=${encodeURIComponent(uploadUrl)}`;
-          // Proxy tidak memberi progress granular; tampilkan loading 90% -> 100%
-          setUploadProgress((p) => (p < 90 ? 90 : p));
-          const proxyRes = await fetch(proxyUrl, { method: 'POST', body: file });
+          setUploadProgress((prev) => (prev < 90 ? 90 : prev));
+          const proxyRes = await fetch(proxyUrl, { method: "POST", body: file });
           ok = proxyRes.ok;
           setUploadProgress(100);
         }
 
         if (!ok) {
-          throw new Error('Upload ke Mux gagal (CORS atau jaringan).');
+          throw new Error("Upload ke Mux gagal (CORS atau jaringan).");
         }
       } catch (uploadError) {
         console.error(uploadError);
+        setUploadStatus("error");
+        setUploadProgress(0);
+        setCurrentVideoFile(null);
         setMessage({
-          type: 'warning',
-          text: 'Upload Mux gagal. Anda bisa mengisi playback ID manual dari dashboard Mux.',
+          type: "warning",
+          text: "Upload Mux gagal. Anda bisa mengisi playback ID manual dari dashboard Mux.",
         });
         return;
       }
 
-      // 3) Poll status sampai playbackId dan assetId tersedia
       let playbackId = result.data?.playback_ids?.[0]?.id ?? null;
       let assetId = result.data?.asset_id ?? null;
       const startTime = Date.now();
       const pollTimeout = 120000;
       while (Date.now() - startTime < pollTimeout) {
-        if (playbackId && assetId) {
-          break;
-        }
+        if (playbackId && assetId) break;
         try {
           const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
           const statusJson = await statusRes.json().catch(() => ({}));
           if (statusRes.ok) {
-            playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
+            playbackId =
+              playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
             assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
-            console.log("[MUX DEBUG] Poll upload status", { uploadId, playbackId, assetId });
           } else {
             console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
           }
@@ -194,17 +343,14 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       }
 
       if (!playbackId || !assetId) {
-        throw new Error('Gagal mendapatkan playbackId / assetId dari Mux.');
+        throw new Error("Gagal mendapatkan playbackId / assetId dari Mux.");
       }
 
-      console.log('[MUX DEBUG] Upload resolved', { uploadId, playbackId, assetId });
-
-      // Upload thumbnail file (jika ada)
       if (thumbnailFile) {
         try {
           const fd = new FormData();
-          fd.append('file', thumbnailFile);
-          const imgRes = await fetch('/api/uploads/image', { method: 'POST', body: fd });
+          fd.append("file", thumbnailFile);
+          const imgRes = await fetch("/api/uploads/image", { method: "POST", body: fd });
           if (imgRes.ok) {
             const imgJson = await imgRes.json();
             if (imgJson?.data?.url) {
@@ -212,7 +358,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             }
           }
         } catch (thumbErr) {
-          console.warn('[MUX DEBUG] Thumbnail upload failed', thumbErr?.message ?? thumbErr);
+          console.warn("[MUX DEBUG] Thumbnail upload failed", thumbErr?.message ?? thumbErr);
         }
       }
 
@@ -223,7 +369,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         mux_asset_id: assetId,
         fileHash: fp,
       }));
-      // Jika admin isi rentang trailer, jadikan URL trailer dari playback utama
+
       const start = parseFloat(trailerStart);
       const end = parseFloat(trailerEnd);
       if (!Number.isNaN(start) && !Number.isNaN(end) && end > start) {
@@ -231,61 +377,18 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         setFormData((prev) => ({ ...prev, trailer: trailerUrl }));
       }
 
-      // 4) Unggah subtitle file (jika ada) lalu sinkronkan ke Mux
-      try {
-        const subtitleSnapshot = [...(formData.subtitles ?? [])];
-        const indices = Object.keys(subtitleFiles || {});
-        for (const idx of indices) {
-          const fileObj = subtitleFiles[idx];
-          if (!fileObj) continue;
-          const fd = new FormData();
-          fd.append('file', fileObj, fileObj.name);
-          const lang = formData.subtitles?.[idx]?.lang || 'en';
-          const label = formData.subtitles?.[idx]?.label || lang;
-          fd.append('lang', lang);
-          fd.append('label', label);
-          try {
-            const upRes = await fetch('/api/uploads/subtitle', { method: 'POST', body: fd });
-            if (upRes.ok) {
-              const upJson = await upRes.json();
-              if (upJson?.data?.url) {
-                subtitleSnapshot[idx] = {
-                  ...(subtitleSnapshot[idx] ?? {}),
-                  url: upJson.data.url,
-                  lang,
-                  label,
-                };
-                updateSubtitle(Number(idx), 'url', upJson.data.url);
-              }
-            } else {
-              console.warn('[MUX DEBUG] Subtitle upload failed', upRes.status);
-            }
-          } catch (fileErr) {
-            console.warn('[MUX DEBUG] Subtitle upload error', fileErr?.message ?? fileErr);
-          }
-        }
-
-        await syncSubtitlesToMux({ assetId, playbackId, subtitles: subtitleSnapshot });
-      } catch (subtitleErr) {
-        console.warn('[MUX DEBUG] Subtitle sync pipeline error', subtitleErr?.message ?? subtitleErr);
-      }
-
-      setMessage({ type: 'success', text: 'Upload video berhasil. Playback ID terisi otomatis.' });
+      setUploadStatus("success");
+      setUploadProgress(0);
+      setCurrentVideoFile(null);
+      setSubtitleSyncStatus("idle");
+      setMessage({ type: "success", text: "Upload video berhasil. Playback ID terisi otomatis." });
     } catch (error) {
       console.error(error);
-      setMessage({ type: 'error', text: error.message });
-    } finally {
-      setUploading(false);
+      setUploadStatus("error");
+      setUploadProgress(0);
+      setCurrentVideoFile(null);
+      setMessage({ type: "error", text: error.message });
     }
-  };
-
-  const handleUploadPackage = async () => {
-    if (!videoFile) {
-      setMessage({ type: 'warning', text: 'Pilih file video terlebih dahulu.' });
-      return;
-    }
-    await handleDirectUpload(videoFile);
-    setVideoFile(null);
   };
 
   const addSubtitle = () => {
@@ -293,6 +396,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       ...prev,
       subtitles: [...(prev.subtitles ?? []), emptySubtitle],
     }));
+    setSubtitleUploadStatus("idle");
+    setSubtitleSyncStatus("idle");
   };
 
   const updateSubtitle = (index, field, value) => {
@@ -304,6 +409,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       };
       return { ...prev, subtitles };
     });
+    setSubtitleSyncStatus("idle");
   };
 
   const removeSubtitle = (index) => {
@@ -312,12 +418,14 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       subtitles.splice(index, 1);
       return { ...prev, subtitles };
     });
+    setSubtitleSyncStatus("idle");
   };
 
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
 
     try {
+      setSubtitleUploadStatus("processing");
       const text = await file.text();
       const mimeType = file.type || (file.name.endsWith(".srt") ? "application/x-subrip" : undefined);
       let converted = text;
@@ -328,12 +436,28 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
 
       const vttBlob = new Blob([converted], { type: "text/vtt" });
       const vttFile = new File([vttBlob], file.name.replace(/\.srt$/i, ".vtt"), { type: "text/vtt" });
-      setSubtitleFiles((prev) => ({ ...prev, [index]: vttFile }));
-      updateSubtitle(index, "url", vttFile.name);
-      setMessage({ type: "info", text: "Subtitle siap diunggah bersama paket. Tekan 'Upload ke Mux'." });
+      const fd = new FormData();
+      fd.append("file", vttFile, vttFile.name);
+      const lang = formData.subtitles?.[index]?.lang || "en";
+      const label = formData.subtitles?.[index]?.label || lang;
+      fd.append("lang", lang);
+      fd.append("label", label);
+
+      const res = await fetch("/api/uploads/subtitle", { method: "POST", body: fd });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Gagal mengunggah subtitle.");
+      }
+      const json = await res.json().catch(() => ({}));
+      const url = json?.data?.url ?? "";
+      updateSubtitle(index, "url", url);
+      setSubtitleUploadStatus("success");
+      setSubtitleSyncStatus("idle");
+      setMessage({ type: "success", text: "Subtitle berhasil diunggah. Segera kirim ke Mux." });
     } catch (error) {
       console.error(error);
-      setMessage({ type: "error", text: "Gagal membaca file subtitle." });
+      setSubtitleUploadStatus("error");
+      setMessage({ type: "error", text: error?.message ?? "Gagal mengunggah subtitle." });
     }
   };
 
@@ -356,14 +480,14 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   }
 
   async function syncSubtitlesToMux({ assetId, playbackId, subtitles = [] } = {}) {
-    if (!Array.isArray(subtitles) || !subtitles.length) return;
+    if (!Array.isArray(subtitles) || !subtitles.length) return false;
     let targetAssetId = assetId ?? null;
     if (!targetAssetId && playbackId) {
       targetAssetId = await fetchAssetIdFromPlayback(playbackId);
     }
     if (!targetAssetId) {
       console.warn("[MUX DEBUG] Subtitle sync skipped - assetId unresolved", { playbackId });
-      return;
+      return false;
     }
     try {
       const validTracks = subtitles
@@ -374,7 +498,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           name: s.label || s.lang || "Subtitle",
         }));
 
-      if (!validTracks.length) return;
+      if (!validTracks.length) return false;
 
       const res = await fetch("/api/mux/text-tracks", {
         method: "POST",
@@ -384,11 +508,13 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, res.status, json);
-        return;
+        return false;
       }
       console.log("[MUX DEBUG] Subtitle sync success", targetAssetId, json);
+      return true;
     } catch (err) {
       console.warn("[MUX DEBUG] Subtitle sync error", err?.message ?? err);
+      return false;
     }
   }
 
@@ -411,6 +537,24 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         return;
       }
 
+      if (!videoReady) {
+        setIsSubmitting(false);
+        setMessage({ type: "warning", text: "Selesaikan upload video ke Mux terlebih dahulu." });
+        return;
+      }
+
+      if (!subtitlesUploadReady) {
+        setIsSubmitting(false);
+        setMessage({ type: "warning", text: "Pastikan semua subtitle memiliki URL publik sebelum menyimpan." });
+        return;
+      }
+
+      if (!subtitlesSyncReady) {
+        setIsSubmitting(false);
+        setMessage({ type: "warning", text: "Kirim subtitle ke Mux terlebih dahulu sebelum menyimpan." });
+        return;
+      }
+
       // Simpan movie ke backend
       const response = await fetch("/api/movies/save", {
         method: initialData?.id ? "PUT" : "POST",
@@ -424,17 +568,13 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
 
       setMessage({ type: "success", text: "Movie berhasil disimpan." });
 
-      // Sinkronisasi subtitle ke Mux jika tersedia
-      const assetId = formData.mux_asset_id || formData.mux_video_id || formData.mux_playback_id;
-
-      if (assetId && formData.subtitles?.length) {
-        await syncSubtitlesToMux({ assetId, playbackId: formData.mux_playback_id, subtitles: formData.subtitles });
-      } else {
-        console.warn("[mux] Subtitle sync skipped - assetId not found or subtitles empty");
-      }
-
       if (!initialData?.id) {
         setFormData(defaultMovie);
+        setUploadStatus("idle");
+        setSubtitleUploadStatus("idle");
+        setSubtitleSyncStatus("idle");
+        setUploadProgress(0);
+        setCurrentVideoFile(null);
       }
       onSuccess?.(result.data ?? formData);
     } catch (error) {
@@ -452,7 +592,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           <input
             value={formData.title ?? ""}
             onChange={(event) => setFormData((prev) => ({ ...prev, title: event.target.value }))}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
             required
           />
           {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
@@ -462,7 +603,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           <select
             value={formData.category ?? categoryOptions[0]}
             onChange={(event) => setFormData((prev) => ({ ...prev, category: event.target.value }))}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {categoryOptions.map((category) => (
               <option key={category} value={category}>
@@ -480,7 +622,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           value={formData.description ?? ""}
           onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
           rows={4}
-          className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40"
+          disabled={!videoReady}
+          className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
           required
         />
         {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
@@ -493,7 +636,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={formData.thumbnail ?? ""}
             onChange={(event) => setFormData((prev) => ({ ...prev, thumbnail: event.target.value }))}
             placeholder="https://..."
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-400">
             <label className="text-primary-200 hover:text-primary-100">
@@ -501,6 +645,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                 type="file"
                 accept="image/*"
                 onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)}
+                disabled={!videoReady}
                 className="hidden"
               />
               <span className="cursor-pointer">Pilih file thumbnail</span>
@@ -514,7 +659,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={formData.trailer ?? ""}
             onChange={(event) => setFormData((prev) => ({ ...prev, trailer: event.target.value }))}
             placeholder="https://stream.mux.com/..."
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
       </div>
@@ -531,30 +677,30 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           </div>
         </div>
 
-        {uploadMode === 'upload' && (
+        {uploadMode === "upload" && (
           <div className="flex items-center gap-3 text-xs">
             <label className="text-primary-200 hover:text-primary-100">
               <input
                 type="file"
                 accept="video/*"
-                onChange={(event) => setVideoFile(event.target.files?.[0] ?? null)}
-                disabled={uploading}
+                onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)}
+                disabled={["uploading", "hashing"].includes(uploadStatus)}
                 className="hidden"
               />
               <span className="cursor-pointer">Pilih video</span>
             </label>
             <button
               type="button"
-              onClick={handleUploadPackage}
-              disabled={uploading || !videoFile}
+              onClick={() => currentVideoFile && handleDirectUpload(currentVideoFile)}
+              disabled={["uploading", "hashing"].includes(uploadStatus) || !currentVideoFile}
               className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Upload ke Mux
+              {["uploading", "hashing"].includes(uploadStatus) ? "Mengunggah..." : "Upload ke Mux"}
             </button>
-            {videoFile && <span className="text-slate-500">{videoFile.name}</span>}
+            {currentVideoFile && <span className="text-slate-500">{currentVideoFile.name}</span>}
           </div>
         )}
-        {uploadMode === 'upload' && uploading && (
+        {uploadMode === "upload" && ["uploading", "hashing"].includes(uploadStatus) && (
           <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
             <div
               className="h-2 bg-primary-500 transition-all"
@@ -584,7 +730,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={trailerStart}
             onChange={(e) => setTrailerStart(e.target.value)}
             placeholder="mis: 0"
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
         <label className="text-sm text-slate-300">
@@ -596,10 +743,17 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={trailerEnd}
             onChange={(e) => setTrailerEnd(e.target.value)}
             placeholder="mis: 10"
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            disabled={!videoReady}
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
       </div>
+
+      { !videoReady && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          Unggah video ke Mux terlebih dahulu untuk membuka pengisian metadata dan subtitle.
+        </div>
+      )}
 
       <div className="space-y-3 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-4">
         <div className="flex items-center justify-between">
@@ -610,7 +764,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           <button
             type="button"
             onClick={addSubtitle}
-            className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200"
+            disabled={!videoReady}
+            className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Tambah Subtitle
           </button>
@@ -622,7 +777,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               <select
                 value={subtitle.lang ?? "en"}
                 onChange={(event) => updateSubtitle(index, "lang", event.target.value)}
-                className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                disabled={!videoReady}
+                className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {SUBTITLE_LANGUAGES.map((lang) => (
                   <option key={lang.code} value={lang.code}>
@@ -634,12 +790,14 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                 value={subtitle.label ?? ""}
                 onChange={(event) => updateSubtitle(index, "label", event.target.value)}
                 placeholder="Label ditampilkan"
-                className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                disabled={!videoReady}
+                className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
               />
               <button
                 type="button"
                 onClick={() => removeSubtitle(index)}
-                className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10"
+                disabled={!videoReady}
+                className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Hapus
               </button>
@@ -648,7 +806,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               value={subtitle.url ?? ""}
               onChange={(event) => updateSubtitle(index, "url", event.target.value)}
               placeholder="https://..."
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+              disabled={!videoReady}
+              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <label className="flex items-center justify-between text-xs text-slate-400">
               <span>Upload file .vtt / .srt</span>
@@ -657,6 +816,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                 accept=".vtt,.srt,text/vtt,application/x-subrip"
                 onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])}
                 className="text-xs"
+                disabled={!videoReady}
               />
             </label>
           </div>
@@ -664,6 +824,23 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         {errors.subtitles && Array.isArray(errors.subtitles) && (
           <p className="text-xs text-rose-400">Periksa kembali data subtitle.</p>
         )}
+
+        <div className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400">
+          <div>
+            <p className="font-medium text-slate-200">Sinkronisasi Subtitle</p>
+            <p className="text-[11px] text-slate-500">
+              Pastikan URL subtitle publik sebelum mengirim ke Mux. Subtitle lama akan tetap tersedia.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSubtitleSync}
+            disabled={!canSyncSubtitles || isSyncingSubtitles}
+            className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSyncingSubtitles ? "Mengirim..." : "Kirim Subtitle ke Mux"}
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -685,7 +862,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={isSubmitting || !canSaveMovie}
+          title={!canSaveMovie ? "Selesaikan tahap upload video dan sinkronisasi subtitle terlebih dahulu." : undefined}
           className="rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700"
         >
           {isSubmitting ? "Menyimpan..." : submitLabel}
@@ -697,6 +875,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               setFormData({ ...defaultMovie, ...initialData });
               setErrors({});
               setMessage(null);
+              setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
+              setSubtitleUploadStatus(
+                (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
+              );
+              setSubtitleSyncStatus("idle");
             }}
             className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
           >
@@ -707,4 +890,3 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     </form>
   );
 }
-

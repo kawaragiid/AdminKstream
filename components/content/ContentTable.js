@@ -20,6 +20,11 @@ export default function ContentTable() {
   const [error, setError] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [editMode, setEditMode] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const [muxDetails, setMuxDetails] = useState(null);
+  const [muxLoading, setMuxLoading] = useState(false);
+  const [muxError, setMuxError] = useState(null);
 
   const categories = useMemo(() => ["", ...CONTENT_CATEGORIES], []);
 
@@ -83,12 +88,114 @@ export default function ContentTable() {
   const openDetails = async (item) => {
     setSelectedItem(item);
     setEditMode(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    setMuxDetails(null);
+    setMuxError(null);
+
+    const targetId = item.id;
+
+    try {
+      const endpoint = item.type === CONTENT_TYPES.MOVIE ? `/api/movies/${item.id}` : `/api/series/${item.id}`;
+      const response = await fetch(endpoint);
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json?.error ?? "Gagal memuat detail konten.");
+      }
+      setSelectedItem((prev) => {
+        if (!prev || prev.id !== targetId) return prev;
+        return { ...prev, ...json.data };
+      });
+    } catch (err) {
+      setDetailError(err?.message ?? "Gagal memuat detail konten.");
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const refreshAfterEdit = () => {
     setEditMode(null);
     fetchData();
   };
+
+  const formatDuration = (seconds) => {
+    const numeric = Number(seconds);
+    if (!Number.isFinite(numeric) || numeric <= 0) return "-";
+    const hours = Math.floor(numeric / 3600);
+    const minutes = Math.floor((numeric % 3600) / 60);
+    const secs = Math.floor(numeric % 60);
+    if (hours > 0) {
+      return `${hours}j ${minutes}m ${secs}s`;
+    }
+    if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    }
+    return `${secs}s`;
+  };
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setMuxDetails(null);
+      setMuxLoading(false);
+      setMuxError(null);
+      return;
+    }
+
+    const candidate =
+      selectedItem.mux_asset_id ?? selectedItem.mux_playback_id ?? selectedItem.mux_video_id ?? null;
+
+    if (!candidate) {
+      setMuxDetails(null);
+      setMuxLoading(false);
+      setMuxError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadMuxDetails = async () => {
+      setMuxLoading(true);
+      setMuxError(null);
+      try {
+        let assetId = selectedItem.mux_asset_id ?? null;
+        if (!assetId) {
+          const resolveRes = await fetch(`/api/mux/resolve-asset?playbackId=${encodeURIComponent(candidate)}`);
+          const resolveJson = await resolveRes.json().catch(() => ({}));
+          if (!resolveRes.ok) {
+            throw new Error(resolveJson?.error ?? "Asset Mux tidak ditemukan.");
+          }
+          assetId = resolveJson?.data?.assetId ?? null;
+        }
+
+        if (!assetId) {
+          throw new Error("Asset ID Mux tidak tersedia.");
+        }
+
+        const assetRes = await fetch(`/api/mux/assets/${assetId}`);
+        const assetJson = await assetRes.json().catch(() => ({}));
+        if (!assetRes.ok) {
+          throw new Error(assetJson?.error ?? "Gagal memuat detail asset Mux.");
+        }
+
+        if (cancelled) return;
+        setMuxDetails({ assetId, ...(assetJson?.data ?? {}) });
+      } catch (err) {
+        if (cancelled) return;
+        setMuxDetails(null);
+        setMuxError(err?.message ?? "Gagal memuat data Mux.");
+      } finally {
+        if (!cancelled) {
+          setMuxLoading(false);
+        }
+      }
+    };
+
+    loadMuxDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItem]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
@@ -214,6 +321,8 @@ export default function ContentTable() {
                 {selectedItem.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"} • {selectedItem.category}
               </p>
             </header>
+            {detailLoading && <p className="text-xs text-slate-500">Memuat data terbaru dari Firestore...</p>}
+            {detailError && <p className="text-xs text-rose-400">{detailError}</p>}
             <p className="text-sm text-slate-300 whitespace-pre-line">
               {selectedItem.description}
             </p>
@@ -241,6 +350,28 @@ export default function ContentTable() {
                 </div>
               </div>
             )}
+            <div className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/60 p-3">
+              <p className="text-sm font-semibold text-slate-200">Status Asset Mux</p>
+              {muxLoading ? (
+                <p className="text-xs text-slate-500">Memuat data dari Mux...</p>
+              ) : muxError ? (
+                <p className="text-xs text-rose-400">{muxError}</p>
+              ) : muxDetails ? (
+                <ul className="space-y-1 text-xs text-slate-400">
+                  <li>Asset ID: {muxDetails.assetId ?? muxDetails.id ?? "-"}</li>
+                  <li>Status: {muxDetails.status ?? "-"}</li>
+                  {muxDetails.duration && <li>Durasi: {formatDuration(muxDetails.duration)}</li>}
+                  {muxDetails.max_stored_resolution && (
+                    <li>Resolusi: {muxDetails.max_stored_resolution}</li>
+                  )}
+                  {muxDetails.created_at && (
+                    <li>Dibuat: {new Date(muxDetails.created_at).toLocaleString("id-ID")}</li>
+                  )}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-500">Belum ada data asset Mux.</p>
+              )}
+            </div>
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
@@ -251,7 +382,15 @@ export default function ContentTable() {
               </button>
               <button
                 type="button"
-                onClick={() => setSelectedItem(null)}
+                onClick={() => {
+                  setSelectedItem(null);
+                  setEditMode(null);
+                  setDetailError(null);
+                  setDetailLoading(false);
+                  setMuxDetails(null);
+                  setMuxError(null);
+                  setMuxLoading(false);
+                }}
                 className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:border-slate-500 hover:text-white"
               >
                 Tutup
@@ -278,7 +417,10 @@ export default function ContentTable() {
               initialData={selectedItem}
               submitLabel="Perbarui Movie"
               onSuccess={(payload) => {
-                setSelectedItem(payload);
+                setSelectedItem((prev) => ({ ...(prev ?? {}), ...payload }));
+                setDetailError(null);
+                setMuxError(null);
+                setMuxDetails(null);
                 refreshAfterEdit();
               }}
             />
@@ -303,7 +445,10 @@ export default function ContentTable() {
               initialData={selectedItem}
               submitLabel="Perbarui Series"
               onSuccess={(payload) => {
-                setSelectedItem(payload);
+                setSelectedItem((prev) => ({ ...(prev ?? {}), ...payload }));
+                setDetailError(null);
+                setMuxError(null);
+                setMuxDetails(null);
                 refreshAfterEdit();
               }}
             />
