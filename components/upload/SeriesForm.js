@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import { CONTENT_CATEGORIES, SUBTITLE_LANGUAGES } from "@/utils/constants";
@@ -23,7 +23,6 @@ const newEpisodeDraft = (index = 0) => ({
   mux_playback_id: "",
   mux_asset_id: "",
   mux_video_id: "",
-  // Tambahkan field untuk ID unggahan Mux sebagai fallback
   mux_upload_id: "",
   thumbnail: "",
   trailer: "",
@@ -33,17 +32,15 @@ const newEpisodeDraft = (index = 0) => ({
 const emptySubtitle = { lang: "en", label: "English", url: "" };
 
 function uid() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `episode-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-// SubtitleEditor tetap sebagai komponen terpisah
+// ======================================================================
+// Komponen Subtitle Editor
+// ======================================================================
 function SubtitleEditor({ subtitles, onChange, messageSetter }) {
-  const addSubtitle = () => {
-    onChange([...(subtitles ?? []), emptySubtitle]);
-  };
+  const addSubtitle = () => onChange([...(subtitles ?? []), emptySubtitle]);
 
   const updateSubtitle = (index, field, value) => {
     const next = [...(subtitles ?? [])];
@@ -66,9 +63,10 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
       if (mimeType === "application/x-subrip" || file.name.endsWith(".srt")) {
         converted = convertSrtToVtt(text);
       }
-      // Upload langsung subtitle ke Storage agar URL bisa dipakai Mux
       const vttBlob = new Blob([converted], { type: "text/vtt" });
-      const vttFile = new File([vttBlob], file.name.replace(/\.srt$/i, ".vtt"), { type: "text/vtt" });
+      const vttFile = new File([vttBlob], file.name.replace(/\.srt$/i, ".vtt"), {
+        type: "text/vtt",
+      });
       const fd = new FormData();
       fd.append("file", vttFile, vttFile.name);
       const res = await fetch("/api/uploads/subtitle", { method: "POST", body: fd });
@@ -76,7 +74,10 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
       const json = await res.json();
       const url = json?.data?.url;
       updateSubtitle(index, "url", url ?? "");
-      messageSetter?.({ type: "success", text: "Subtitle siap dan URL publik tersimpan." });
+      messageSetter?.({
+        type: "success",
+        text: "Subtitle siap dan URL publik tersimpan.",
+      });
     } catch (error) {
       console.error(error);
       messageSetter?.({ type: "error", text: "Gagal mengonversi subtitle." });
@@ -94,32 +95,22 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
       {(subtitles ?? []).map((subtitle, index) => (
         <div key={index} className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/60 p-4">
           <div className="flex items-center gap-3">
-            <select value={subtitle.lang ?? "en"} onChange={(event) => updateSubtitle(index, "lang", event.target.value)} className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200">
+            <select value={subtitle.lang ?? "en"} onChange={(e) => updateSubtitle(index, "lang", e.target.value)} className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200">
               {SUBTITLE_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>
                   {lang.label}
                 </option>
               ))}
             </select>
-            <input
-              value={subtitle.label ?? ""}
-              onChange={(event) => updateSubtitle(index, "label", event.target.value)}
-              placeholder="Label"
-              className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-            />
+            <input value={subtitle.label ?? ""} onChange={(e) => updateSubtitle(index, "label", e.target.value)} placeholder="Label" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
             <button type="button" onClick={() => removeSubtitle(index)} className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
               Hapus
             </button>
           </div>
-          <input
-            value={subtitle.url ?? ""}
-            onChange={(event) => updateSubtitle(index, "url", event.target.value)}
-            placeholder="https://..."
-            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200"
-          />
+          <input value={subtitle.url ?? ""} onChange={(e) => updateSubtitle(index, "url", e.target.value)} placeholder="https://..." className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
           <label className="flex items-center justify-between text-xs text-slate-400">
             <span>Upload file .vtt / .srt</span>
-            <input type="file" accept=".vtt,.srt,text/vtt,application/x-subrip" onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])} />
+            <input type="file" accept=".vtt,.srt,text/vtt,application/x-subrip" onChange={(e) => handleSubtitleFile(index, e.target.files?.[0])} />
           </label>
         </div>
       ))}
@@ -127,55 +118,32 @@ function SubtitleEditor({ subtitles, onChange, messageSetter }) {
   );
 }
 
-// HAPUS KOMPONEN EpisodeForm. Seluruh logikanya diintegrasikan ke SeriesForm.
-
+// ======================================================================
+// Komponen Utama: SeriesForm
+// ======================================================================
 export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simpan Series" }) {
   const [formData, setFormData] = useState({ ...defaultSeries, ...initialData });
   const [message, setMessage] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // STATE UNTUK EDITOR EPISODE
   const [editingEpisodeIndex, setEditingEpisodeIndex] = useState(null);
   const [episodeDraft, setEpisodeDraft] = useState(newEpisodeDraft());
-
-  // STATE UNTUK UPLOAD VIDEO
   const [uploadProgress, setUploadProgress] = useState(0);
   const [currentVideoFile, setCurrentVideoFile] = useState(null);
 
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
 
-  const openEpisodeEditor = (index = null) => {
-    if (index === null) {
-      setEpisodeDraft(newEpisodeDraft(formData.episodes?.length ?? 0));
-      setEditingEpisodeIndex(formData.episodes?.length ?? 0);
-      setCurrentVideoFile(null); // Reset file yang dipilih saat buka editor baru
-      return;
-    }
-    const selected = formData.episodes?.[index];
-    setEpisodeDraft({ ...selected });
-    setEditingEpisodeIndex(index);
-    setCurrentVideoFile(null);
-  };
-
-  const closeEpisodeEditor = () => {
-    setEditingEpisodeIndex(null);
-    setEpisodeDraft(newEpisodeDraft());
-    setUploadProgress(0);
-    setCurrentVideoFile(null);
-  };
-
+  // ====================================================================
+  // Helper Functions
+  // ====================================================================
   const normalizePlaybackValue = (raw) => {
     if (!raw) return "";
     let v = String(raw).trim();
-    // Extract from common Mux URLs
     try {
       if (v.includes("stream.mux.com")) {
-        // e.g. https://stream.mux.com/{playbackId}.m3u8 or with query params
         const m = v.match(/stream\.mux\.com\/([^\/?#\.]+)/i);
         if (m?.[1]) v = m[1];
       } else if (v.includes("image.mux.com")) {
-        // e.g. https://image.mux.com/{playbackId}/thumbnail.jpg?time=1
         const m = v.match(/image\.mux\.com\/([^\/?#]+)/i);
         if (m?.[1]) v = m[1];
       }
@@ -183,7 +151,84 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     return v;
   };
 
-  // ✅ UPLOAD EPISODE KE MUX + SUBTITLE
+  const muxWait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function fetchAssetIdFromPlayback(playbackId) {
+    if (!playbackId) return null;
+    try {
+      const res = await fetch(`/api/mux/resolve-asset?playbackId=${encodeURIComponent(playbackId)}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn("[MUX DEBUG] resolve-asset failed", playbackId, res.status, body?.error ?? body);
+        return null;
+      }
+      return body?.data?.assetId ?? null;
+    } catch (error) {
+      console.warn("[MUX DEBUG] resolve-asset error", playbackId, error?.message ?? error);
+      return null;
+    }
+  }
+
+  async function syncSubtitlesToMux({ assetId, playbackId, subtitles = [] } = {}) {
+    if (!Array.isArray(subtitles) || !subtitles.length) return;
+    let targetAssetId = assetId ?? null;
+    if (!targetAssetId && playbackId) targetAssetId = await fetchAssetIdFromPlayback(playbackId);
+    if (!targetAssetId) return;
+
+    try {
+      const validTracks = subtitles
+        .filter((s) => /^https?:\/\//i.test(s.url))
+        .map((s) => ({
+          url: s.url,
+          language_code: s.lang || "en",
+          name: s.label || s.lang || "Subtitle",
+        }));
+
+      if (!validTracks.length) return;
+
+      const res = await fetch("/api/mux/text-tracks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId: targetAssetId, tracks: validTracks }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, json);
+      else console.log("[MUX DEBUG] Subtitle sync success", targetAssetId, json);
+    } catch (err) {
+      console.warn("[MUX DEBUG] Subtitle sync error", err?.message ?? err);
+    }
+  }
+
+  const retryAutofillFromMux = async () => {
+    if (!episodeDraft.mux_upload_id) return;
+    try {
+      setMessage({ type: "info", text: "Mencoba mengisi Playback ID otomatis..." });
+      const res = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(episodeDraft.mux_upload_id)}`);
+      if (!res.ok) throw new Error("Gagal cek status Mux.");
+      const json = await res.json();
+      const p = json?.data?.asset?.playback_ids?.[0]?.id || json?.data?.status?.playback_ids?.[0]?.id || "";
+      let assetId = json?.data?.status?.asset_id || json?.data?.asset?.id || null;
+      if (!assetId && p) assetId = await fetchAssetIdFromPlayback(p);
+      if (p) {
+        setEpisodeDraft((prev) => ({
+          ...prev,
+          mux_playback_id: p,
+          mux_video_id: p,
+          mux_asset_id: assetId ?? prev.mux_asset_id ?? null,
+        }));
+        setMessage({ type: "success", text: "Playback ID berhasil diisi otomatis." });
+      } else {
+        setMessage({ type: "warning", text: "Playback ID belum tersedia. Coba lagi." });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err.message || "Gagal mengisi otomatis." });
+    }
+  };
+
+  // ====================================================================
+  // Upload langsung ke Mux
+  // ====================================================================
   const handleDirectUpload = async (file) => {
     if (!file) return;
     setMessage({ type: "info", text: "Mengunggah video episode ke Mux..." });
@@ -191,7 +236,6 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     setCurrentVideoFile(file);
 
     try {
-      // 1. Minta upload URL dari /api/mux/direct-upload
       const response = await fetch("/api/mux/direct-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -199,12 +243,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Gagal memulai upload episode.");
-
       const uploadUrl = result.data?.url;
       const uploadId = result.data?.id;
       if (!uploadUrl) throw new Error("Tidak mendapatkan upload URL dari Mux.");
 
-      // 2. Upload file video langsung ke Mux
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", uploadUrl);
@@ -219,59 +261,45 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         xhr.send(file);
       });
 
-      // 3. Poll status sampai dapat playbackId dan assetId
       let playbackId = null;
       let assetId = null;
       const startTime = Date.now();
-      while (!playbackId && Date.now() - startTime < 60000) {
-        const statusRes = await fetch(`/api/mux/upload-status?uploadId=${uploadId}`);
-        const statusJson = await statusRes.json();
-        playbackId = statusJson?.data?.asset?.playback_ids?.[0]?.id || statusJson?.data?.status?.playback_ids?.[0]?.id;
-        assetId = statusJson?.data?.asset?.id || statusJson?.data?.status?.asset_id;
-        if (playbackId) break;
-        await new Promise((r) => setTimeout(r, 2000));
+      const pollTimeout = 120000;
+
+      while (Date.now() - startTime < pollTimeout) {
+        try {
+          const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
+          const statusJson = await statusRes.json().catch(() => ({}));
+          if (statusRes.ok) {
+            playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
+            assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+          }
+        } catch {}
+        if (playbackId && assetId) break;
+        await muxWait(2000);
       }
 
-      if (!playbackId) throw new Error("Playback ID tidak ditemukan setelah upload.");
+      if (playbackId && !assetId) assetId = await fetchAssetIdFromPlayback(playbackId);
+      if (!playbackId || !assetId) throw new Error("Gagal mendapatkan playbackId / assetId dari Mux.");
 
-      // 4. Update episode draft
+      await syncSubtitlesToMux({
+        assetId,
+        playbackId,
+        subtitles: episodeDraft.subtitles ?? [],
+      });
+
       setEpisodeDraft((prev) => ({
         ...prev,
         mux_playback_id: playbackId,
         mux_video_id: playbackId,
         mux_asset_id: assetId,
       }));
-
-      // 5. Kirim subtitle ke /api/mux/text-tracks
-      if (assetId && episodeDraft.subtitles?.length) {
-        const validTracks = episodeDraft.subtitles
-          .filter((s) => /^https?:\/\//i.test(s.url))
-          .map((s) => ({
-            url: s.url,
-            language_code: s.lang || "en",
-            name: s.label || s.lang,
-          }));
-
-        if (validTracks.length) {
-          const res = await fetch("/api/mux/text-tracks", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ assetId, tracks: validTracks }),
-          });
-
-          if (res.ok) {
-            setMessage({ type: "success", text: "Subtitle berhasil dikaitkan ke Mux." });
-          } else {
-            const j = await res.json();
-            console.warn("Subtitle gagal dikirim ke Mux:", j);
-            setMessage({ type: "warning", text: "Subtitle gagal dikirim ke Mux. Coba ulang nanti." });
-          }
-        }
-      }
-
       setUploadProgress(0);
       setCurrentVideoFile(null);
-      setMessage({ type: "success", text: "Upload episode berhasil. Playback ID terisi otomatis." });
+      setMessage({
+        type: "success",
+        text: "Upload episode berhasil. Playback ID terisi otomatis.",
+      });
     } catch (err) {
       console.error(err);
       setUploadProgress(0);
@@ -279,62 +307,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     }
   };
 
-  // LOGIKA RETRY AUTOFIL DARI EPISODEFORM DIPINDAHKAN KE SINI
-  const retryAutofillFromMux = async () => {
-    // Gunakan mux_upload_id dari episodeDraft
-    if (!episodeDraft.mux_upload_id) return;
-    try {
-      setMessage({ type: "info", text: "Mencoba mengisi Playback ID otomatis..." });
-      const res = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(episodeDraft.mux_upload_id)}`);
-      if (!res.ok) throw new Error("Gagal cek status Mux.");
-      const json = await res.json();
-      const p = json?.data?.asset?.playback_ids?.[0]?.id || json?.data?.status?.playback_ids?.[0]?.id || "";
-      const assetId = json?.data?.status?.asset_id || json?.data?.asset?.id || null;
-      if (p) {
-        // SET STATE DRAFT SAAT RETRY BERHASIL
-        setEpisodeDraft((prev) => ({
-          ...prev,
-          mux_playback_id: p,
-          mux_video_id: p,
-          ...(assetId ? { mux_asset_id: assetId } : {}),
-        }));
-        setMessage({ type: "success", text: "Playback ID berhasil diisi otomatis." });
-      } else {
-        setMessage({ type: "warning", text: "Playback ID belum tersedia. Coba lagi sebentar." });
-      }
-    } catch (err) {
-      setMessage({ type: "error", text: err.message || "Gagal mencoba mengisi Playback ID otomatis." });
-    }
-  };
-
-  async function syncSubtitlesToMux(assetId, subtitles = []) {
-    if (!assetId || !Array.isArray(subtitles) || !subtitles.length) return;
-    try {
-      const validTracks = subtitles
-        .filter((s) => /^https?:\/\//i.test(s.url))
-        .map((s) => ({
-          url: s.url,
-          language_code: s.lang || "en",
-          name: s.label || s.lang || "Subtitle",
-        }));
-
-      if (validTracks.length) {
-        const res = await fetch("/api/mux/text-tracks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assetId, tracks: validTracks }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Gagal sinkronisasi subtitle ke Mux");
-        console.log("[mux] Subtitle tersinkron ke Mux:", json);
-      }
-    } catch (err) {
-      console.warn("[mux] Gagal sinkron subtitle ke Mux:", err.message);
-    }
-  }
-
+  // ====================================================================
+  // Persist Episode Draft
+  // ====================================================================
   const persistEpisodeDraft = async () => {
-    // ... (Logika persistEpisodeDraft tetap)
     if (!(episodeDraft.mux_playback_id ?? episodeDraft.mux_video_id)) {
       setMessage({ type: "error", text: "Playback ID episode wajib diisi." });
       return;
@@ -346,9 +322,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       epNumber: Number(episodeDraft.epNumber ?? (formData.episodes?.length ?? 0) + 1),
     };
 
-    // Jika series sudah ada di server, simpan episode langsung via API
+    // Jika series sudah ada di server
     if (initialData?.id) {
-      // ... (logic API call)
       try {
         const res = await fetch(`/api/series/${initialData.id}/episodes`, {
           method: "POST",
@@ -368,13 +343,13 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         });
         setMessage({ type: "success", text: "Episode berhasil ditambahkan." });
 
-        // Sinkronisasi subtitle ke Mux jika tersedia
         const assetId = draft.mux_asset_id || draft.mux_video_id || draft.mux_playback_id;
-
         if (assetId && draft.subtitles?.length) {
-          await syncSubtitlesToMux(assetId, draft.subtitles);
-        } else {
-          console.warn("[mux] Subtitle sync skipped - assetId not found or subtitles empty");
+          await syncSubtitlesToMux({
+            assetId,
+            playbackId: draft.mux_playback_id,
+            subtitles: draft.subtitles,
+          });
         }
       } catch (err) {
         setMessage({ type: "error", text: err.message });
@@ -385,13 +360,33 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       return;
     }
 
-    // Jika series belum dibuat, simpan ke state lokal sampai series disimpan
+    // Jika series baru (belum disimpan)
     setFormData((prev) => {
       const episodes = [...(prev.episodes ?? [])];
       episodes[editingEpisodeIndex] = draft;
       return { ...prev, episodes };
     });
     closeEpisodeEditor();
+  };
+
+  const openEpisodeEditor = (index = null) => {
+    if (index === null) {
+      setEpisodeDraft(newEpisodeDraft(formData.episodes?.length ?? 0));
+      setEditingEpisodeIndex(formData.episodes?.length ?? 0);
+      setCurrentVideoFile(null);
+      return;
+    }
+    const selected = formData.episodes?.[index];
+    setEpisodeDraft({ ...selected });
+    setEditingEpisodeIndex(index);
+    setCurrentVideoFile(null);
+  };
+
+  const closeEpisodeEditor = () => {
+    setEditingEpisodeIndex(null);
+    setEpisodeDraft(newEpisodeDraft());
+    setUploadProgress(0);
+    setCurrentVideoFile(null);
   };
 
   const deleteEpisode = (index) => {
@@ -402,8 +397,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     });
   };
 
+  // ====================================================================
+  // Submit Series
+  // ====================================================================
   const handleSubmit = async (event) => {
-    // ... (Logika handleSubmit Series utama tetap)
     event.preventDefault();
     setIsSubmitting(true);
     setErrors({});
@@ -432,9 +429,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       }
 
       setMessage({ type: "success", text: "Series berhasil disimpan." });
-      if (!initialData?.id) {
-        setFormData(defaultSeries);
-      }
+      if (!initialData?.id) setFormData(defaultSeries);
       onSuccess?.(result.data ?? payload);
     } catch (error) {
       setMessage({ type: "error", text: error.message });
@@ -443,27 +438,28 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     }
   };
 
-  // RENDER UTAMA (Integrasi UI Episode Editor)
+  // ====================================================================
+  // RENDER
+  // ====================================================================
   return (
     <div className="space-y-6">
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ... UI Series Utama (Judul, Kategori, Deskripsi, Thumbnail) ... */}
+        {/* FORM SERIES UTAMA */}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-300">
             Judul Series
             <input
               value={formData.title ?? ""}
-              onChange={(event) => setFormData((prev) => ({ ...prev, title: event.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
               className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
               required
             />
-            {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
           </label>
           <label className="text-sm text-slate-300">
             Kategori
             <select
               value={formData.category ?? categoryOptions[0]}
-              onChange={(event) => setFormData((prev) => ({ ...prev, category: event.target.value }))}
+              onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value }))}
               className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
             >
               {categoryOptions.map((category) => (
@@ -472,7 +468,6 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 </option>
               ))}
             </select>
-            {errors.category && <p className="mt-1 text-xs text-rose-400">{errors.category}</p>}
           </label>
         </div>
 
@@ -480,35 +475,31 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           Deskripsi Series
           <textarea
             value={formData.description ?? ""}
-            onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
+            onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
             rows={4}
             className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
             required
           />
-          {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
         </label>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-slate-300">
-            Thumbnail Series
-            <input
-              value={formData.thumbnail ?? ""}
-              onChange={(event) => setFormData((prev) => ({ ...prev, thumbnail: event.target.value }))}
-              placeholder="https://..."
-              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
-            />
-          </label>
-          {/* Trailer/Teaser di level series ditiadakan; kelola per-episode */}
-        </div>
+        <label className="text-sm text-slate-300">
+          Thumbnail Series
+          <input
+            value={formData.thumbnail ?? ""}
+            onChange={(e) => setFormData((prev) => ({ ...prev, thumbnail: e.target.value }))}
+            placeholder="https://..."
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+          />
+        </label>
 
-        {/* Daftar Episode */}
+        {/* DAFTAR EPISODE */}
         <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-lg font-semibold text-slate-100">Daftar Episode</h3>
-              <p className="text-xs text-slate-500">Tambahkan episode dan kelola metadata setiap episode series.</p>
+              <p className="text-xs text-slate-500">Tambahkan episode dan kelola metadata.</p>
             </div>
-            <button type="button" onClick={() => openEpisodeEditor(null)} className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 transition hover:border-primary-500 hover:text-primary-200">
+            <button type="button" onClick={() => openEpisodeEditor(null)} className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:border-primary-500 hover:text-primary-200">
               Tambah Episode
             </button>
           </div>
@@ -538,10 +529,9 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               <p className="rounded-2xl border border-dashed border-slate-800/60 bg-slate-950/40 px-4 py-6 text-center text-xs text-slate-500">Belum ada episode. Tambahkan minimal satu episode sebelum menyimpan series.</p>
             )}
           </div>
-          {errors.episodes && <p className="text-xs text-rose-400">Periksa data episode. Pastikan minimal 1 episode valid.</p>}
         </div>
 
-        {/* Pesan Notifikasi */}
+        {/* PESAN */}
         {message && (
           <div
             className={`rounded-2xl border px-4 py-3 text-sm ${
@@ -558,9 +548,9 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           </div>
         )}
 
-        {/* Tombol Submit Utama */}
+        {/* SUBMIT */}
         <div className="flex items-center gap-3">
-          <button type="submit" disabled={isSubmitting} className="rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700">
+          <button type="submit" disabled={isSubmitting} className="rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-500 disabled:bg-slate-700">
             {isSubmitting ? "Menyimpan..." : submitLabel}
           </button>
           {initialData?.id && (
@@ -571,7 +561,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 setErrors({});
                 setMessage(null);
               }}
-              className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+              className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 hover:border-slate-500 hover:text-white"
             >
               Reset perubahan
             </button>
@@ -579,7 +569,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         </div>
       </form>
 
-      {/* EDITOR EPISODE TERINTEGRASI */}
+      {/* EPISODE EDITOR */}
       {editingEpisodeIndex !== null && (
         <div className="rounded-3xl border border-primary-500/30 bg-primary-500/5 p-6">
           <h4 className="text-sm font-semibold text-slate-100">{episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode"}</h4>
@@ -592,7 +582,12 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                   type="number"
                   min={1}
                   value={episodeDraft.epNumber ?? ""}
-                  onChange={(event) => setEpisodeDraft((prev) => ({ ...prev, epNumber: Number(event.target.value) }))}
+                  onChange={(e) =>
+                    setEpisodeDraft((prev) => ({
+                      ...prev,
+                      epNumber: Number(e.target.value),
+                    }))
+                  }
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                 />
               </label>
@@ -600,14 +595,14 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 Judul Episode
                 <input
                   value={episodeDraft.title ?? ""}
-                  onChange={(event) => setEpisodeDraft((prev) => ({ ...prev, title: event.target.value }))}
+                  onChange={(e) => setEpisodeDraft((prev) => ({ ...prev, title: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                   required
                 />
               </label>
             </div>
 
-            {typeof window !== "undefined" && uploadProgress > 0 && (
+            {uploadProgress > 0 && (
               <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
                 <div className="h-2 bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
@@ -617,7 +612,12 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               Deskripsi Episode
               <textarea
                 value={episodeDraft.description ?? ""}
-                onChange={(event) => setEpisodeDraft((prev) => ({ ...prev, description: event.target.value }))}
+                onChange={(e) =>
+                  setEpisodeDraft((prev) => ({
+                    ...prev,
+                    description: e.target.value,
+                  }))
+                }
                 rows={3}
                 className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                 required
@@ -629,7 +629,12 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 Thumbnail Episode (opsional)
                 <input
                   value={episodeDraft.thumbnail ?? ""}
-                  onChange={(event) => setEpisodeDraft((prev) => ({ ...prev, thumbnail: event.target.value }))}
+                  onChange={(e) =>
+                    setEpisodeDraft((prev) => ({
+                      ...prev,
+                      thumbnail: e.target.value,
+                    }))
+                  }
                   placeholder="https://..."
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                 />
@@ -639,54 +644,46 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 <div className="mt-2 flex items-center gap-3">
                   <input
                     type="text"
-                    name="episodePlaybackId"
                     value={episodeDraft.mux_playback_id ?? ""}
-                    onChange={(event) => {
-                      const val = event.target.value;
-                      // Update DRAFT langsung saat diketik
-                      setEpisodeDraft((prev) => ({ ...prev, mux_playback_id: val, mux_video_id: val }));
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setEpisodeDraft((prev) => ({
+                        ...prev,
+                        mux_playback_id: val,
+                        mux_video_id: val,
+                      }));
                     }}
-                    onBlur={(event) => {
-                      const normalized = normalizePlaybackValue(event.target.value);
-                      // Update DRAFT saat blur
-                      setEpisodeDraft((prev) => ({ ...prev, mux_playback_id: normalized, mux_video_id: normalized }));
+                    onBlur={(e) => {
+                      const normalized = normalizePlaybackValue(e.target.value);
+                      setEpisodeDraft((prev) => ({
+                        ...prev,
+                        mux_playback_id: normalized,
+                        mux_video_id: normalized,
+                      }));
                     }}
                     placeholder="Playback ID atau URL Mux"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    inputMode="text"
                     className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                     required
                   />
                   <div className="flex items-center gap-3 text-xs">
-                    <label className="text-primary-200 hover:text-primary-100">
-                      <input
-                        type="file"
-                        accept="video/*"
-                        className="hidden"
-                        // Simpan file yang dipilih ke currentVideoFile
-                        onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)}
-                      />
-                      <span className="cursor-pointer">Pilih Video</span>
+                    <label className="text-primary-200 hover:text-primary-100 cursor-pointer">
+                      <input type="file" accept="video/*" className="hidden" onChange={(e) => setCurrentVideoFile(e.target.files?.[0] ?? null)} />
+                      Pilih Video
                     </label>
                     <button
                       type="button"
-                      // Panggil handleDirectUpload dengan file yang dipilih
                       onClick={() => currentVideoFile && handleDirectUpload(currentVideoFile)}
                       disabled={!currentVideoFile || uploadProgress > 0}
-                      className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
                     >
                       {uploadProgress > 0 ? "Mengunggah..." : "Upload ke Mux"}
                     </button>
-                    {/* Tombol Fallback Cek ID */}
                     {episodeDraft.mux_upload_id && !episodeDraft.mux_playback_id && (
                       <button
                         type="button"
                         onClick={retryAutofillFromMux}
                         disabled={uploadProgress > 0}
-                        className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
                       >
                         Cek ID
                       </button>
@@ -701,18 +698,18 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               Trailer URL Episode (opsional)
               <input
                 value={episodeDraft.trailer ?? ""}
-                onChange={(event) => setEpisodeDraft((prev) => ({ ...prev, trailer: event.target.value }))}
+                onChange={(e) =>
+                  setEpisodeDraft((prev) => ({
+                    ...prev,
+                    trailer: e.target.value,
+                  }))
+                }
                 placeholder="https://stream.mux.com/..."
                 className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
               />
             </label>
 
-            <SubtitleEditor
-              subtitles={episodeDraft.subtitles}
-              // Subtitle Editor update DRAFT langsung
-              onChange={(value) => setEpisodeDraft((prev) => ({ ...prev, subtitles: value }))}
-              messageSetter={setMessage}
-            />
+            <SubtitleEditor subtitles={episodeDraft.subtitles} onChange={(value) => setEpisodeDraft((prev) => ({ ...prev, subtitles: value }))} messageSetter={setMessage} />
 
             <div className="flex items-center justify-end gap-3">
               <button type="button" onClick={closeEpisodeEditor} className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:border-slate-500 hover:text-white">
@@ -721,9 +718,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               <button
                 type="button"
                 onClick={persistEpisodeDraft}
-                // Pastikan tombol submit memerlukan Playback ID
                 disabled={!episodeDraft.title || !episodeDraft.description || !episodeDraft.mux_playback_id}
-                className="rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                className="rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 disabled:bg-slate-700"
               >
                 Simpan Episode
               </button>

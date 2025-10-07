@@ -32,6 +32,10 @@ export async function POST(request, { params }) {
 
   try {
     const payload = await request.json();
+    if (!payload || typeof payload !== 'object') {
+      return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
+    }
+
     const muxInfo = await normalizeMuxMetadata({
       assetId: payload.mux_asset_id,
       playbackId: payload.mux_playback_id,
@@ -40,9 +44,7 @@ export async function POST(request, { params }) {
     payload.mux_asset_id = muxInfo.assetId;
     payload.mux_playback_id = muxInfo.playbackId;
     payload.mux_video_id = muxInfo.videoId;
-    if (!payload || typeof payload !== 'object') {
-      return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
-    }
+
     const { valid, errors } = validateEpisode(payload);
 
     if (!valid) {

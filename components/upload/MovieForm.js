@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -164,118 +164,113 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         return;
       }
 
-      // Robust polling for playback id up to ~60s
-      let playbackId = result.data.playback_ids?.[0]?.id ?? '';
+      // 3) Poll status sampai playbackId dan assetId tersedia
+      let playbackId = result.data?.playback_ids?.[0]?.id ?? null;
+      let assetId = result.data?.asset_id ?? null;
       const startTime = Date.now();
-      while (!playbackId && uploadId && Date.now() - startTime < 60000) {
+      const pollTimeout = 120000;
+      while (Date.now() - startTime < pollTimeout) {
+        if (playbackId && assetId) {
+          break;
+        }
         try {
-          await new Promise((r) => setTimeout(r, 2000));
-          const statusResponse = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
-          if (statusResponse.ok) {
-            const statusResult = await statusResponse.json();
-            playbackId =
-              statusResult?.data?.asset?.playback_ids?.[0]?.id ??
-              statusResult?.data?.status?.playback_ids?.[0]?.id ??
-              '';
-            if (playbackId) break;
+          const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
+          const statusJson = await statusRes.json().catch(() => ({}));
+          if (statusRes.ok) {
+            playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
+            assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+            console.log("[MUX DEBUG] Poll upload status", { uploadId, playbackId, assetId });
+          } else {
+            console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
           }
-        } catch (_) {}
+        } catch (pollErr) {
+          console.warn("[MUX DEBUG] Upload status fetch failed", uploadId, pollErr?.message ?? pollErr);
+        }
+        await muxWait(2000);
       }
 
-      if (playbackId) {
-        // Ambil assetId dari status polling jika tersedia
-        let assetId = null;
+      if (playbackId && !assetId) {
+        assetId = await fetchAssetIdFromPlayback(playbackId);
+      }
+
+      if (!playbackId || !assetId) {
+        throw new Error('Gagal mendapatkan playbackId / assetId dari Mux.');
+      }
+
+      console.log('[MUX DEBUG] Upload resolved', { uploadId, playbackId, assetId });
+
+      // Upload thumbnail file (jika ada)
+      if (thumbnailFile) {
         try {
-          const statusResponse2 = uploadId
-            ? await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`)
-            : null;
-          if (statusResponse2?.ok) {
-            const statusResult2 = await statusResponse2.json();
-            assetId = statusResult2?.data?.status?.asset_id ?? statusResult2?.data?.asset?.id ?? null;
+          const fd = new FormData();
+          fd.append('file', thumbnailFile);
+          const imgRes = await fetch('/api/uploads/image', { method: 'POST', body: fd });
+          if (imgRes.ok) {
+            const imgJson = await imgRes.json();
+            if (imgJson?.data?.url) {
+              setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
+            }
           }
-        } catch {}
-        // Upload thumbnail file (jika ada)
-        if (thumbnailFile) {
+        } catch (thumbErr) {
+          console.warn('[MUX DEBUG] Thumbnail upload failed', thumbErr?.message ?? thumbErr);
+        }
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        mux_playback_id: playbackId,
+        mux_video_id: playbackId,
+        mux_asset_id: assetId,
+        fileHash: fp,
+      }));
+      // Jika admin isi rentang trailer, jadikan URL trailer dari playback utama
+      const start = parseFloat(trailerStart);
+      const end = parseFloat(trailerEnd);
+      if (!Number.isNaN(start) && !Number.isNaN(end) && end > start) {
+        const trailerUrl = `https://stream.mux.com/${playbackId}.m3u8?start=${start}&end=${end}`;
+        setFormData((prev) => ({ ...prev, trailer: trailerUrl }));
+      }
+
+      // 4) Unggah subtitle file (jika ada) lalu sinkronkan ke Mux
+      try {
+        const subtitleSnapshot = [...(formData.subtitles ?? [])];
+        const indices = Object.keys(subtitleFiles || {});
+        for (const idx of indices) {
+          const fileObj = subtitleFiles[idx];
+          if (!fileObj) continue;
+          const fd = new FormData();
+          fd.append('file', fileObj, fileObj.name);
+          const lang = formData.subtitles?.[idx]?.lang || 'en';
+          const label = formData.subtitles?.[idx]?.label || lang;
+          fd.append('lang', lang);
+          fd.append('label', label);
           try {
-            const fd = new FormData();
-            fd.append('file', thumbnailFile);
-            const imgRes = await fetch('/api/uploads/image', { method: 'POST', body: fd });
-            if (imgRes.ok) {
-              const imgJson = await imgRes.json();
-              if (imgJson?.data?.url) {
-                setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
+            const upRes = await fetch('/api/uploads/subtitle', { method: 'POST', body: fd });
+            if (upRes.ok) {
+              const upJson = await upRes.json();
+              if (upJson?.data?.url) {
+                subtitleSnapshot[idx] = {
+                  ...(subtitleSnapshot[idx] ?? {}),
+                  url: upJson.data.url,
+                  lang,
+                  label,
+                };
+                updateSubtitle(Number(idx), 'url', upJson.data.url);
               }
+            } else {
+              console.warn('[MUX DEBUG] Subtitle upload failed', upRes.status);
             }
-          } catch {}
-        }
-
-        setFormData((prev) => ({
-          ...prev,
-          mux_playback_id: playbackId,
-          mux_video_id: playbackId,
-          ...(assetId ? { mux_asset_id: assetId } : {}),
-          fileHash: fp,
-        }));
-        // Jika admin isi rentang trailer, jadikan URL trailer dari playback utama
-        const start = parseFloat(trailerStart);
-        const end = parseFloat(trailerEnd);
-        if (!Number.isNaN(start) && !Number.isNaN(end) && end > start) {
-          const trailerUrl = `https://stream.mux.com/${playbackId}.m3u8?start=${start}&end=${end}`;
-          setFormData((prev) => ({ ...prev, trailer: trailerUrl }));
-        }
-
-        // 1) Unggah subtitle file ke storage (jika ada), 2) Tambahkan ke Mux sebagai text tracks
-        try {
-          if (assetId) {
-            // Upload subtitle files first
-            const urlsFromFiles = [];
-            const indices = Object.keys(subtitleFiles || {});
-            for (const idx of indices) {
-              const fileObj = subtitleFiles[idx];
-              if (!fileObj) continue;
-              const fd = new FormData();
-              fd.append('file', fileObj, fileObj.name);
-              const lang = (formData.subtitles?.[idx]?.lang) || 'en';
-              const label = (formData.subtitles?.[idx]?.label) || lang;
-              fd.append('lang', lang);
-              fd.append('label', label);
-              try {
-                const upRes = await fetch('/api/uploads/subtitle', { method: 'POST', body: fd });
-                if (upRes.ok) {
-                  const upJson = await upRes.json();
-                  if (upJson?.data?.url) {
-                    urlsFromFiles.push({ url: upJson.data.url, language_code: lang, name: label });
-                    // sinkronkan URL di form
-                    updateSubtitle(Number(idx), 'url', upJson.data.url);
-                  }
-                }
-              } catch {}
-            }
-
-            const tracks = [
-              ...urlsFromFiles,
-              ...(formData.subtitles ?? [])
-                .filter((t, i) => !subtitleFiles?.[i] && typeof t?.url === 'string' && /^https?:\/\//i.test(t.url))
-                .map((t) => ({ url: t.url, language_code: t.lang || 'en', name: t.label || t.lang || 'Subtitle' })),
-            ];
-            if (tracks.length) {
-              const res = await fetch('/api/mux/text-tracks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ assetId, tracks }),
-              });
-              console.log('[DEBUG] Subtitle sync response:', await res.json());
-            }
+          } catch (fileErr) {
+            console.warn('[MUX DEBUG] Subtitle upload error', fileErr?.message ?? fileErr);
           }
-        } catch {}
+        }
 
-        setMessage({ type: 'success', text: 'Upload video berhasil. Playback ID terisi otomatis.' });
-      } else {
-        setMessage({
-          type: 'warning',
-          text: 'Upload selesai, tetapi playback ID belum tersedia. Cek dashboard Mux Anda.',
-        });
+        await syncSubtitlesToMux({ assetId, playbackId, subtitles: subtitleSnapshot });
+      } catch (subtitleErr) {
+        console.warn('[MUX DEBUG] Subtitle sync pipeline error', subtitleErr?.message ?? subtitleErr);
       }
+
+      setMessage({ type: 'success', text: 'Upload video berhasil. Playback ID terisi otomatis.' });
     } catch (error) {
       console.error(error);
       setMessage({ type: 'error', text: error.message });
@@ -342,8 +337,34 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     }
   };
 
-  async function syncSubtitlesToMux(assetId, subtitles = []) {
-    if (!assetId || !Array.isArray(subtitles) || !subtitles.length) return;
+  const muxWait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function fetchAssetIdFromPlayback(playbackId) {
+    if (!playbackId) return null;
+    try {
+      const res = await fetch(`/api/mux/resolve-asset?playbackId=${encodeURIComponent(playbackId)}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn("[MUX DEBUG] resolve-asset failed", playbackId, res.status, body?.error ?? body);
+        return null;
+      }
+      return body?.data?.assetId ?? null;
+    } catch (error) {
+      console.warn("[MUX DEBUG] resolve-asset error", playbackId, error?.message ?? error);
+      return null;
+    }
+  }
+
+  async function syncSubtitlesToMux({ assetId, playbackId, subtitles = [] } = {}) {
+    if (!Array.isArray(subtitles) || !subtitles.length) return;
+    let targetAssetId = assetId ?? null;
+    if (!targetAssetId && playbackId) {
+      targetAssetId = await fetchAssetIdFromPlayback(playbackId);
+    }
+    if (!targetAssetId) {
+      console.warn("[MUX DEBUG] Subtitle sync skipped - assetId unresolved", { playbackId });
+      return;
+    }
     try {
       const validTracks = subtitles
         .filter((s) => /^https?:\/\//i.test(s.url))
@@ -353,37 +374,51 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           name: s.label || s.lang || "Subtitle",
         }));
 
-      if (validTracks.length) {
-        const res = await fetch("/api/mux/text-tracks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assetId, tracks: validTracks }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Gagal sinkronisasi subtitle ke Mux");
-        console.log("[mux] Subtitle tersinkron ke Mux:", json);
+      if (!validTracks.length) return;
+
+      const res = await fetch("/api/mux/text-tracks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assetId: targetAssetId, tracks: validTracks }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, res.status, json);
+        return;
       }
+      console.log("[MUX DEBUG] Subtitle sync success", targetAssetId, json);
     } catch (err) {
-      console.warn("[mux] Gagal sinkron subtitle ke Mux:", err.message);
+      console.warn("[MUX DEBUG] Subtitle sync error", err?.message ?? err);
     }
   }
 
+  // Form submit handler
   const handleSubmit = async (event) => {
     event.preventDefault();
     setIsSubmitting(true);
     setMessage(null);
     setErrors({});
-
     try {
-      const response = await fetch(`/api/movies${initialData?.id ? `/${initialData.id}` : ""}`, {
+      // Validate required fields
+      const newErrors = {};
+      if (!formData.title) newErrors.title = "Judul wajib diisi.";
+      if (!formData.description) newErrors.description = "Deskripsi wajib diisi.";
+      if (!formData.category) newErrors.category = "Kategori wajib diisi.";
+      if (!formData.mux_playback_id && !formData.mux_video_id) newErrors.mux_playback_id = "Playback ID wajib diisi.";
+      setErrors(newErrors);
+      if (Object.keys(newErrors).length > 0) {
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Simpan movie ke backend
+      const response = await fetch("/api/movies/save", {
         method: initialData?.id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
       const result = await response.json();
       if (!response.ok) {
-        setErrors(result.details ?? {});
         throw new Error(result.error ?? "Gagal menyimpan movie.");
       }
 
@@ -393,7 +428,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const assetId = formData.mux_asset_id || formData.mux_video_id || formData.mux_playback_id;
 
       if (assetId && formData.subtitles?.length) {
-        await syncSubtitlesToMux(assetId, formData.subtitles);
+        await syncSubtitlesToMux({ assetId, playbackId: formData.mux_playback_id, subtitles: formData.subtitles });
       } else {
         console.warn("[mux] Subtitle sync skipped - assetId not found or subtitles empty");
       }
@@ -672,3 +707,4 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     </form>
   );
 }
+
