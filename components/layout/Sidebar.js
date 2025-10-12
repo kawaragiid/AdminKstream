@@ -62,11 +62,11 @@ const Sidebar = ({ session }) => {
         )}
       </div>
 
-      <nav className={`flex md:flex-col md:flex-1 items-center justify-around md:justify-start md:space-y-1 w-full ${expanded ? "md:px-3" : "md:px-1"} py-1 md:py-0`}>
+      <nav className={`flex md:flex-col md:flex-1 items-center md:justify-start md:space-y-1 w-full ${expanded ? "md:px-3" : "md:px-1"} py-1 md:py-0 overflow-x-auto no-scrollbar px-2`}>
         {navigation.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link key={item.href} href={item.href} className={`${baseItemClasses} ${expanded ? "" : "px-2"} ${isActive ? "bg-primary-600/90 text-white shadow-lg shadow-primary-600/25" : "text-slate-300 hover:bg-slate-800/60"}`}>
+            <Link key={item.href} href={item.href} className={`${baseItemClasses} flex-shrink-0 ${expanded ? "" : "px-2"} ${isActive ? "bg-primary-600/90 text-white shadow-lg shadow-primary-600/25" : "text-slate-300 hover:bg-slate-800/60"}`}>
               <span className={`flex h-8 w-10 items-center justify-center rounded-xl text-lg font-semibold ${isActive ? "bg-primary-500/20 text-white" : "bg-slate-900 text-primary-200"}`}>{item.icon}</span>
               <span className="mt-1 text-center text-[10px] leading-tight md:hidden">{item.short ?? item.label}</span>
               {expanded && (

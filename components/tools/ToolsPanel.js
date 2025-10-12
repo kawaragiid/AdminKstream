@@ -231,7 +231,7 @@ const ToolsPanel = () => {
             className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-6 text-sm text-slate-400"
           />
           <p className="mt-2 text-xs text-slate-500">
-            Format contoh: <code className="rounded bg-slate-800/60 px-2 py-1 text-[10px] text-slate-200">[{sampleRecord}]</code>
+            Format contoh: <code className="break-all rounded bg-slate-800/60 px-2 py-1 text-[10px] text-slate-200">[{sampleRecord}]</code>
           </p>
         </div>
       </div>
