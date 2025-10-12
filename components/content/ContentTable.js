@@ -341,7 +341,7 @@ export default function ContentTable() {
                         Ep {episode.epNumber} — {episode.title}
                       </p>
                       <p className="text-xs text-slate-500 line-clamp-3">{episode.description}</p>
-                      <p className="text-xs text-slate-500">Playback ID: {episode.mux_playback_id ?? episode.mux_video_id}</p>
+                      <p className="text-xs text-slate-500 break-all">Playback ID: {episode.mux_playback_id ?? episode.mux_video_id}</p>
                     </div>
                   ))}
                   {!selectedItem.episodes?.length && <p>Belum ada episode.</p>}

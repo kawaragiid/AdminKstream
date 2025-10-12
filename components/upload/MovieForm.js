@@ -575,8 +575,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+    <div className="border-2 border-red-500">
+      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
         <label className="block text-sm text-slate-300">
           Judul Movie
           <input
@@ -860,5 +861,6 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         )}
       </div>
     </form>
+  </div>
   );
 }

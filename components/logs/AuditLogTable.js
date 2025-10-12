@@ -59,17 +59,17 @@ const AuditLogTable = ({ initialLogs = [] }) => {
               {logs.map((log) => (
                 <tr key={log.id ?? `${log.action}-${log.createdAt}`}>
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-300">{log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}</td>
-                  <td className="px-4 py-4 text-sm text-slate-200">
+                  <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-200">
                     <p className="font-medium">{log.action}</p>
-                    {log.metadata && <p className="max-w-xs truncate text-xs text-slate-500" title={JSON.stringify(log.metadata)}>{JSON.stringify(log.metadata)}</p>}
+                    {log.metadata && <p className="truncate text-xs text-slate-500" title={JSON.stringify(log.metadata)}>{JSON.stringify(log.metadata)}</p>}
                   </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
+                  <td className="max-w-sm truncate px-4 py-4 text-sm text-slate-300">
                     <p>{log.targetType ?? "-"}</p>
-                    {log.targetId && <p className="text-xs text-slate-500">{log.targetId}</p>}
+                    {log.targetId && <p className="truncate text-xs text-slate-500">{log.targetId}</p>}
                   </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
+                  <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-300">
                     <p>{log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
-                    {log.actor?.email && <p className="text-xs text-slate-500">{log.actor.email}</p>}
+                    {log.actor?.email && <p className="truncate text-xs text-slate-500">{log.actor.email}</p>}
                   </td>
                 </tr>
               ))}
