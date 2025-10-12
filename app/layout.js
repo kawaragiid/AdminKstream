@@ -14,6 +14,9 @@ export const metadata = {
   },
   description:
     "Panel admin terintegrasi untuk mengelola konten, pengguna, dan analitik Kstream.",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({ children }) {
