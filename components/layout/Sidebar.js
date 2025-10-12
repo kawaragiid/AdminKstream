@@ -42,7 +42,8 @@ const Sidebar = ({ session }) => {
           const isActive = pathname === item.href;
           return (
             <Link key={item.href} href={item.href} className={`${baseItemClasses} ${expanded ? "" : "px-2"} ${isActive ? "bg-primary-600/90 text-white shadow-lg shadow-primary-600/25" : "text-slate-300 hover:bg-slate-800/60"}`}>
-              <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold ${isActive ? "bg-primary-500/20 text-white" : "bg-slate-900 text-primary-200"}`}>{item.icon}</span>
+              <span className={`flex h-8 w-10 items-center justify-center rounded-xl text-lg font-semibold ${isActive ? "bg-primary-500/20 text-white" : "bg-slate-900 text-primary-200"}`}>{item.icon}</span>
+              <span className="mt-1 text-center text-[10px] leading-tight md:hidden">{item.short ?? item.label}</span>
               {expanded && (
                 <div className="leading-tight">
                   <p className="font-medium">{item.label}</p>
