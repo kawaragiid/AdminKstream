@@ -1,27 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ADMIN_NAVIGATION, ADMIN_ROLES } from "@/utils/constants";
-
-const baseItemClasses = "group flex flex-col md:flex-row items-center md:gap-3 rounded-lg md:rounded-xl px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-sm transition-colors duration-200";
-
-const Indicator = () => (
-  <span className="relative flex h-2 w-2">
-    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
-  </span>
-);
-
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ADMIN_NAVIGATION, ADMIN_ROLES } from "@/utils/constants";
-
-const baseItemClasses = "group flex flex-col md:flex-row items-center md:gap-3 rounded-lg md:rounded-xl px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-sm transition-colors duration-200";
 
 const Indicator = () => (
   <span className="relative flex h-2 w-2">
@@ -66,15 +49,39 @@ const Sidebar = ({ session }) => {
         {navigation.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link key={item.href} href={item.href} className={`${baseItemClasses} flex-shrink-0 ${expanded ? "" : "px-2"} ${isActive ? "bg-primary-600/90 text-white shadow-lg shadow-primary-600/25" : "text-slate-300 hover:bg-slate-800/60"}`}>
-              <span className={`flex h-8 w-10 items-center justify-center rounded-xl text-lg font-semibold ${isActive ? "bg-primary-500/20 text-white" : "bg-slate-900 text-primary-200"}`}>{item.icon}</span>
-              <span className="mt-1 text-center text-[10px] leading-tight md:hidden">{item.short ?? item.label}</span>
-              {expanded && (
-                <div className="leading-tight">
-                  <p className="font-medium">{item.label}</p>
-                  <p className="text-xs text-slate-400">{item.description}</p>
-                </div>
-              )}
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex-shrink-0 rounded-lg transition-colors duration-200 ${
+                isActive
+                  ? "bg-primary-600/90 text-white shadow-lg shadow-primary-600/25"
+                  : "text-slate-300 hover:bg-slate-800/60"
+              }`}>
+              {/* Mobile: Icon Only */}
+              <div className="flex h-full items-center justify-center px-5 py-3 md:hidden">
+                <span className="text-xl">{item.icon}</span>
+              </div>
+
+              {/* Desktop */}
+              <div
+                className={`hidden md:flex md:items-center md:gap-3 px-4 py-3 ${
+                  !expanded && "md:justify-center"
+                }`}>
+                <span
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl text-lg font-semibold ${
+                    isActive
+                      ? "bg-primary-500/20 text-white"
+                      : "bg-slate-900 text-primary-200"
+                  }`}>
+                  {item.icon}
+                </span>
+                {expanded && (
+                  <div className="leading-tight">
+                    <p className="font-medium text-sm">{item.label}</p>
+                    <p className="text-xs text-slate-400">{item.description}</p>
+                  </div>
+                )}
+              </div>
             </Link>
           );
         })}

@@ -211,7 +211,7 @@ const ToolsPanel = () => {
             accept="application/json"
             onChange={importFirestore}
             disabled={loading}
-            className="w-full max-w-xs cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-3 text-xs text-slate-400"
+            className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-3 text-xs text-slate-400"
           />
         </div>
       </div>

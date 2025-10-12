@@ -83,7 +83,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
             <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm">
               <div className="flex items-start justify-between gap-4">
                 <p className="font-semibold text-slate-100">{log.action}</p>
-                <p className="flex-shrink-0 whitespace-nowrap text-xs text-slate-400">{log.createdAt ? new Date(log.createdAt).toLocaleDateString("id-ID") : "-"}</p>
+                <p className="flex-shrink-0 text-xs text-slate-400">{log.createdAt ? new Date(log.createdAt).toLocaleDateString("id-ID") : "-"}</p>
               </div>
               <div className="mt-2 space-y-2 text-xs">
                 <p><span className="font-medium text-slate-400">Target:</span> {log.targetType ?? "-"} ({log.targetId ?? "N/A"})</p>
