@@ -271,7 +271,7 @@ export default function ContentTable() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="font-semibold text-slate-100 truncate">{item.title}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-400 truncate">
                       {item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"} / {item.category}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
