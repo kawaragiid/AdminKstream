@@ -483,9 +483,13 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       }
     } catch (err) {
       console.error(err);
+      let userMessage = err.message || "Gagal upload episode.";
+      if (err.name === 'NotReadableError' || userMessage.includes('could not be read')) {
+        userMessage = 'File tidak bisa dibaca. Pastikan file tidak sedang digunakan, tidak berada di network drive, dan periksa izin akses file.';
+      }
       setUploadStatus("error");
       setUploadProgress(0);
-      setMessage({ type: "error", text: err.message || "Gagal upload episode." });
+      setMessage({ type: "error", text: userMessage });
     }
   };
 
@@ -966,7 +970,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                   />
                   <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
                     <label className="text-primary-200 hover:text-primary-100 cursor-pointer">
-                      <input type="file" accept="video/*" className="hidden" onChange={(e) => setCurrentVideoFile(e.target.files?.[0] ?? null)} />
+                      <input type="file" accept=".mp4,.mkv,video/mp4,video/x-matroska" className="hidden" onChange={(e) => setCurrentVideoFile(e.target.files?.[0] ?? null)} />
                       Pilih Video
                     </label>
                     <button

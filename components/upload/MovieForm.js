@@ -371,10 +371,14 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       setMessage({ type: "success", text: "Upload video berhasil. Playback ID terisi otomatis." });
     } catch (error) {
       console.error(error);
+      let userMessage = error.message;
+      if (error.name === 'NotReadableError' || error.message.includes('could not be read')) {
+        userMessage = 'File tidak bisa dibaca. Pastikan file tidak sedang digunakan, tidak berada di network drive, dan periksa izin akses file.';
+      }
       setUploadStatus("error");
       setUploadProgress(0);
       setCurrentVideoFile(null);
-      setMessage({ type: "error", text: error.message });
+      setMessage({ type: "error", text: userMessage });
     }
   };
 
@@ -673,7 +677,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         {uploadMode === "upload" && (
           <div className="flex items-center gap-3 text-xs">
             <label className="text-primary-200 hover:text-primary-100">
-              <input type="file" accept="video/*" onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)} disabled={["uploading", "hashing"].includes(uploadStatus)} className="hidden" />
+              <input type="file" accept=".mp4,.mkv,video/mp4,video/x-matroska" onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)} disabled={["uploading", "hashing"].includes(uploadStatus)} className="hidden" />
               <span className="cursor-pointer">Pilih video</span>
             </label>
             <button
