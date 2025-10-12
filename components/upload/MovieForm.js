@@ -605,20 +605,18 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           {errors.category && <p className="mt-1 text-xs text-rose-400">{errors.category}</p>}
         </label>
       </div>
-
-      <label className="text-sm text-slate-300">
-        Deskripsi / Sinopsis
+      <label className="block text-sm text-slate-300">
+        <span className="inline-block mb-1">Deskripsi / Sinopsis</span>
         <textarea
           value={formData.description ?? ""}
           onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
           rows={4}
           disabled={!videoReady}
-          className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+          className="mt-1 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
           required
         />
         {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
       </label>
-
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm text-slate-300">
           Thumbnail URL (opsional)
@@ -648,7 +646,6 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           />
         </label>
       </div>
-
       <div className="space-y-3 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -715,7 +712,6 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         />
         {(errors.mux_playback_id || errors.mux_video_id) && <p className="text-xs text-rose-400">{errors.mux_playback_id || errors.mux_video_id}</p>}
       </div>
-
       <div className="grid gap-4 md:grid-cols-2">
         <label className="text-sm text-slate-300">
           Trailer Start (detik)
@@ -744,11 +740,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           />
         </label>
       </div>
-
       {!videoReady && <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Unggah video ke Mux terlebih dahulu untuk membuka pengisian metadata dan subtitle.</div>}
-
-      <div className="space-y-3 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-4">
-        <div className="flex items-center justify-between">
+      <div className="space-y-3 rounded-xl sm:rounded-3xl border border-slate-800/60 bg-slate-900/60 p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium text-slate-200">Subtitle Multi Bahasa</p>
             <p className="text-xs text-slate-500">Tambahkan URL subtitle (VTT). File SRT akan otomatis dikonversi.</p>
@@ -757,7 +751,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             type="button"
             onClick={addSubtitle}
             disabled={!videoReady}
-            className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full sm:w-auto rounded-lg sm:rounded-full border border-slate-700 px-3 py-2 sm:py-1.5 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Tambah Subtitle
           </button>
@@ -824,10 +818,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           </button>
         </div>
       </div>
-
       {message && (
         <div
-          className={`rounded-2xl border px-4 py-3 text-sm ${
+          className={`rounded-xl sm:rounded-2xl border px-3 sm:px-4 py-2.5 sm:py-3 text-sm ${
             message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
               : message.type === "error"
@@ -835,12 +828,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               : message.type === "warning"
               ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
               : "border-slate-700 bg-slate-800/60 text-slate-200"
-          }`}
+          } sticky bottom-0 z-10 backdrop-blur-sm`}
         >
           {message.text}
         </div>
-      )}
-
+      )}{" "}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
         <button
           type="submit"
