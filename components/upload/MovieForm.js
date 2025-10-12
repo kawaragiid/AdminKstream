@@ -575,9 +575,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   };
 
   return (
-    <div className="border-2 border-red-500">
-      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
         <label className="block text-sm text-slate-300">
           Judul Movie
           <input
@@ -804,7 +803,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         ))}
         {errors.subtitles && Array.isArray(errors.subtitles) && <p className="text-xs text-rose-400">Periksa kembali data subtitle.</p>}
 
-        <div className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400 gap-3">
           <div>
             <p className="font-medium text-slate-200">Sinkronisasi Subtitle</p>
             <p className="text-[11px] text-slate-500">Pastikan URL subtitle publik sebelum mengirim ke Mux. Subtitle lama akan tetap tersedia.</p>
@@ -861,6 +860,5 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         )}
       </div>
     </form>
-  </div>
   );
 }

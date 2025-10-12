@@ -80,7 +80,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
         {/* Mobile Card View */}
         <div className="space-y-4 p-4 md:hidden">
           {logs.map((log) => (
-            <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm">
+            <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-red-500 p-4 text-sm">
               <div className="flex items-start justify-between gap-4">
                 <p className="font-semibold text-slate-100 truncate">{log.action}</p>
                 <p className="flex-shrink-0 text-xs text-slate-400">{log.createdAt ? new Date(log.createdAt).toLocaleDateString("id-ID") : "-"}</p>

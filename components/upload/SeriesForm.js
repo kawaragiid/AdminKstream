@@ -103,8 +103,8 @@ function SubtitleEditor({ subtitles, onChange, messageSetter, onUploadStart, onU
       </div>
       {(subtitles ?? []).map((subtitle, index) => (
         <div key={index} className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/60 p-4">
-          <div className="flex items-center gap-3">
-            <select value={subtitle.lang ?? "en"} onChange={(e) => updateSubtitle(index, "lang", e.target.value)} className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <select value={subtitle.lang ?? "en"} onChange={(e) => updateSubtitle(index, "lang", e.target.value)} className="w-full sm:w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200">
               {SUBTITLE_LANGUAGES.map((lang) => (
                 <option key={lang.code} value={lang.code}>
                   {lang.label}
@@ -112,7 +112,7 @@ function SubtitleEditor({ subtitles, onChange, messageSetter, onUploadStart, onU
               ))}
             </select>
             <input value={subtitle.label ?? ""} onChange={(e) => updateSubtitle(index, "label", e.target.value)} placeholder="Label" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
-            <button type="button" onClick={() => removeSubtitle(index)} className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+            <button type="button" onClick={() => removeSubtitle(index)} className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
               Hapus
             </button>
           </div>
@@ -940,7 +940,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               </label>
               <label className="text-sm text-slate-300">
                 Playback ID Episode
-                <div className="mt-2 flex items-center gap-3">
+                <div className="mt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                   <input
                     type="text"
                     value={episodeDraft.mux_playback_id ?? ""}
@@ -964,7 +964,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                     className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                     required
                   />
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-end gap-3 text-xs">
                     <label className="text-primary-200 hover:text-primary-100 cursor-pointer">
                       <input type="file" accept="video/*" className="hidden" onChange={(e) => setCurrentVideoFile(e.target.files?.[0] ?? null)} />
                       Pilih Video
