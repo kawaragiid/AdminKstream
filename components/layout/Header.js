@@ -19,16 +19,7 @@ const Header = ({ session }) => {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        <nav className="flex items-center gap-1.5 sm:gap-2 md:hidden overflow-x-auto no-scrollbar -mx-3 px-3">
-          {navigation.map((item) => {
-            const isActive = item.href === pathname;
-            return (
-              <Link key={item.href} href={item.href} className={`rounded-lg px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs font-medium whitespace-nowrap ${isActive ? "bg-primary-600 text-white" : "bg-slate-800/70 text-slate-300"}`}>
-                {item.short}
-              </Link>
-            );
-          })}
-        </nav>
+
         <div className="hidden items-center gap-2 rounded-xl border border-slate-800/70 bg-slate-900/90 px-4 py-2 text-sm text-slate-400 md:flex">
           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
           <span>Realtime Sync aktif</span>

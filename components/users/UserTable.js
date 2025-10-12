@@ -173,13 +173,13 @@ const UserTable = ({ initialUsers = [] }) => {
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Role
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400 lg:table-cell">
                   Paket
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
                   Langganan
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                <th className="hidden px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400 lg:table-cell">
                   Status Akun
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -205,78 +205,77 @@ const UserTable = ({ initialUsers = [] }) => {
                           {role}
                         </option>
                       ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
-                    <select
-                      value={user.plan}
-                      onChange={(event) => updateRole(user.uid, user.role, event.target.value)}
-                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1 text-xs"
-                    >
-                      {planOptions.map((plan) => (
-                        <option key={plan} value={plan}>
-                          {plan}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
-                    <div className="flex flex-col gap-1">
-                      {user.isActive ? (
-                        <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">Aktif</span>
-                      ) : (
-                        <span className="rounded-full bg-slate-700/40 px-3 py-1 text-xs font-semibold text-slate-300">Nonaktif</span>
-                      )}
-                      <span className="text-xs text-slate-400">
-                        {user.expiresAt ? new Date(user.expiresAt).toLocaleString() : "Tidak ada kadaluarsa"}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
-                    {user.disabled ? (
-                      <span className="rounded-full bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-300">
-                        Suspended
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
-                        Active
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-right text-sm text-slate-300">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => extendSubscription(user.uid, 30)}
-                        className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
-                      >
-                        +30 hari
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSubscriptionActive(user.uid, !user.isActive)}
-                        className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
-                      >
-                        {user.isActive ? "Nonaktifkan" : "Aktifkan"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleStatus(user.uid, !user.disabled)}
-                        className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-rose-500 hover:text-rose-200"
-                      >
-                        {user.status === "suspend" || user.disabled ? "Aktifkan Akun" : "Suspend Akun"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!users.length && !loading && (
-                <tr>
-                  <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={6}>
-                    Tidak ada pengguna.
-                  </td>
-                </tr>
-              )}
+                                      </select>
+                                    </td>
+                                    <td className="hidden px-4 py-4 text-sm text-slate-300 lg:table-cell">
+                                      <select
+                                        value={user.plan}
+                                        onChange={(event) => updateRole(user.uid, user.role, event.target.value)}
+                                        className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1 text-xs"
+                                      >
+                                        {planOptions.map((plan) => (
+                                          <option key={plan} value={plan}>
+                                            {plan}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+                                    <td className="px-4 py-4 text-sm text-slate-300">
+                                      <div className="flex flex-col gap-1">
+                                        {user.isActive ? (
+                                          <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">Aktif</span>
+                                        ) : (
+                                          <span className="rounded-full bg-slate-700/40 px-3 py-1 text-xs font-semibold text-slate-300">Nonaktif</span>
+                                        )}
+                                        <span className="text-xs text-slate-400">
+                                          {user.expiresAt ? new Date(user.expiresAt).toLocaleString() : "Tidak ada kadaluarsa"}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="hidden px-4 py-4 text-sm text-slate-300 lg:table-cell">
+                                      {user.disabled ? (
+                                        <span className="rounded-full bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-300">
+                                          Suspended
+                                        </span>
+                                      ) : (
+                                        <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
+                                          Active
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-4 text-right text-sm text-slate-300">
+                                      <div className="flex items-center justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => extendSubscription(user.uid, 30)}
+                                          className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
+                                        >
+                                          +30 hari
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setSubscriptionActive(user.uid, !user.isActive)}
+                                          className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
+                                        >
+                                          {user.isActive ? "Nonaktifkan" : "Aktifkan"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleStatus(user.uid, !user.disabled)}
+                                          className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-rose-500 hover:text-rose-200"
+                                        >
+                                          {user.status === "suspend" || user.disabled ? "Aktifkan Akun" : "Suspend Akun"}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {!users.length && !loading && (
+                                  <tr>
+                                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
+                                      Tidak ada pengguna.
+                                    </td>
+                                  </tr>              )}
             </tbody>
           </table>
         </div>
@@ -287,7 +286,7 @@ const UserTable = ({ initialUsers = [] }) => {
             <div key={user.uid} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4">
               <div className="space-y-3">
                 <div>
-                  <p className="font-medium text-slate-100">{user.displayName ?? user.email}</p>
+                  <p className="font-medium text-slate-100 truncate">{user.displayName ?? user.email}</p>
                   <p className="text-xs text-slate-500">{user.email}</p>
                 </div>
 

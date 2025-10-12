@@ -231,37 +231,35 @@ export default function ContentTable() {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Judul</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Kategori</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Tanggal</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Aksi</th>
-                </tr>
+                                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Kategori</th>
+                                  <th className="hidden px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400 lg:table-cell">Tanggal</th>
+                                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Aksi</th>                </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
                 {items.map((item) => (
                   <tr key={`${item.type}-${item.id}`} className="transition hover:bg-slate-900/60">
                     <td className="px-4 py-4 text-sm font-medium text-slate-100">{item.title}</td>
-                    <td className="px-4 py-4 text-sm text-slate-300">{item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}</td>
-                    <td className="px-4 py-4 text-sm text-slate-300">{item.category}</td>
-                    <td className="px-4 py-4 text-right text-sm text-slate-300">{item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}</td>
-                    <td className="px-4 py-4 text-right text-sm text-slate-300">
-                      <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => openDetails(item)} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
-                          Detail
-                        </button>
-                        <button type="button" onClick={() => handleDelete(item)} className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
-                          Hapus
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!items.length && !loading && (
-                  <tr>
-                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={5}>
-                      Tidak ada konten.
-                    </td>
-                  </tr>
-                )}
+                                      <td className="px-4 py-4 text-sm text-slate-300">{item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}</td>
+                                      <td className="px-4 py-4 text-sm text-slate-300">{item.category}</td>
+                                      <td className="hidden px-4 py-4 text-right text-sm text-slate-300 lg:table-cell">{item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}</td>
+                                      <td className="px-4 py-4 text-right text-sm text-slate-300">
+                                        <div className="flex justify-end gap-2">
+                                          <button type="button" onClick={() => openDetails(item)} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
+                                            Detail
+                                          </button>
+                                          <button type="button" onClick={() => handleDelete(item)} className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+                                            Hapus
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                  {!items.length && !loading && (
+                                    <tr>
+                                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
+                                        Tidak ada konten.
+                                      </td>
+                                    </tr>                )}
               </tbody>
             </table>
           </div>
@@ -272,7 +270,7 @@ export default function ContentTable() {
               <div key={`${item.type}-${item.id}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="font-semibold text-slate-100">{item.title}</p>
+                    <p className="font-semibold text-slate-100 truncate">{item.title}</p>
                     <p className="text-xs text-slate-400">
                       {item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"} / {item.category}
                     </p>
