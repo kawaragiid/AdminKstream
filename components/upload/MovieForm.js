@@ -1,10 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  CONTENT_CATEGORIES,
-  SUBTITLE_LANGUAGES,
-} from "@/utils/constants";
+import { CONTENT_CATEGORIES, SUBTITLE_LANGUAGES } from "@/utils/constants";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
 const defaultMovie = {
@@ -33,12 +30,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const [currentVideoFile, setCurrentVideoFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMode, setUploadMode] = useState("upload");
-  const [uploadStatus, setUploadStatus] = useState(
-    initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle"
-  );
-  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState(
-    (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
-  );
+  const [uploadStatus, setUploadStatus] = useState(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
+  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState((initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle");
   const [subtitleSyncStatus, setSubtitleSyncStatus] = useState("idle");
   const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
 
@@ -48,9 +41,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   useEffect(() => {
     setFormData({ ...defaultMovie, ...initialData });
     setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-    const hasInitialSubtitles = (initialData?.subtitles ?? []).some(
-      (item) => item?.url && /^https?:\/\//i.test(item.url)
-    );
+    const hasInitialSubtitles = (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
     setSubtitleUploadStatus(hasInitialSubtitles ? "success" : "idle");
     setSubtitleSyncStatus(hasInitialSubtitles ? "success" : "idle");
     setCurrentVideoFile(null);
@@ -93,11 +84,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         const json = await res.json().catch(() => ({}));
         if (!res.ok || cancelled) return;
 
-        const playbackFromAsset =
-          json?.data?.playback_ids?.find((pb) => pb?.policy === "public")?.id ??
-          json?.data?.playback_ids?.[0]?.id ??
-          playback ??
-          null;
+        const playbackFromAsset = json?.data?.playback_ids?.find((pb) => pb?.policy === "public")?.id ?? json?.data?.playback_ids?.[0]?.id ?? playback ?? null;
 
         setFormData((prev) => {
           const nextPlayback = playbackFromAsset ?? prev.mux_playback_id ?? prev.mux_video_id ?? "";
@@ -124,12 +111,12 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       cancelled = true;
     };
   }, [initialData?.id, formData.mux_asset_id, formData.mux_playback_id, formData.mux_video_id]);
-  
+
   async function computeFileHash(file) {
     const buf = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest('SHA-256', buf);
+    const digest = await crypto.subtle.digest("SHA-256", buf);
     const hashArray = Array.from(new Uint8Array(digest));
-    const sha256 = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
     return { sha256, size: file.size };
   }
 
@@ -327,8 +314,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
           const statusJson = await statusRes.json().catch(() => ({}));
           if (statusRes.ok) {
-            playbackId =
-              playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
+            playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
             assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
           } else {
             console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
@@ -528,13 +514,16 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     try {
       // Validate required fields
       const newErrors = {};
-      if (!formData.title) newErrors.title = "Judul wajib diisi.";
-      if (!formData.description) newErrors.description = "Deskripsi wajib diisi.";
-      if (!formData.category) newErrors.category = "Kategori wajib diisi.";
-      if (!formData.mux_playback_id && !formData.mux_video_id) newErrors.mux_playback_id = "Playback ID wajib diisi.";
+      if (!formData.title?.trim()) newErrors.title = "Judul wajib diisi.";
+      if (!formData.description?.trim()) newErrors.description = "Deskripsi wajib diisi.";
+      if (!formData.category?.trim()) newErrors.category = "Kategori wajib diisi.";
+      if (!(formData.mux_playback_id?.trim() || formData.mux_video_id?.trim())) {
+        newErrors.mux_playback_id = "Playback ID wajib diisi.";
+      }
       setErrors(newErrors);
       if (Object.keys(newErrors).length > 0) {
         setIsSubmitting(false);
+        setMessage({ type: "error", text: "Mohon lengkapi semua field yang wajib diisi." });
         return;
       }
 
@@ -586,26 +575,26 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="text-sm text-slate-300">
+    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+        <label className="block text-sm text-slate-300">
           Judul Movie
           <input
             value={formData.title ?? ""}
             onChange={(event) => setFormData((prev) => ({ ...prev, title: event.target.value }))}
             disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
             required
           />
           {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
         </label>
-        <label className="text-sm text-slate-300">
+        <label className="block text-sm text-slate-300">
           Kategori
           <select
             value={formData.category ?? categoryOptions[0]}
             onChange={(event) => setFormData((prev) => ({ ...prev, category: event.target.value }))}
             disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {categoryOptions.map((category) => (
               <option key={category} value={category}>
@@ -642,13 +631,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           />
           <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-400">
             <label className="text-primary-200 hover:text-primary-100">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)}
-                disabled={!videoReady}
-                className="hidden"
-              />
+              <input type="file" accept="image/*" onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)} disabled={!videoReady} className="hidden" />
               <span className="cursor-pointer">Pilih file thumbnail</span>
             </label>
             {thumbnailFile && <span>{thumbnailFile.name}</span>}
@@ -673,21 +656,27 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             <p className="text-xs text-slate-500">Isi manual atau upload video untuk mendapatkan playback ID.</p>
           </div>
           <div className="flex items-center gap-2 text-xs">
-            <button type="button" onClick={() => setUploadMode('upload')} className={`rounded-full px-3 py-1 ${uploadMode==='upload' ? 'bg-primary-600 text-white' : 'border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200'}`}>Upload</button>
-            <button type="button" onClick={() => setUploadMode('manual')} className={`rounded-full px-3 py-1 ${uploadMode==='manual' ? 'bg-primary-600 text-white' : 'border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200'}`}>Manual</button>
+            <button
+              type="button"
+              onClick={() => setUploadMode("upload")}
+              className={`rounded-full px-3 py-1 ${uploadMode === "upload" ? "bg-primary-600 text-white" : "border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200"}`}
+            >
+              Upload
+            </button>
+            <button
+              type="button"
+              onClick={() => setUploadMode("manual")}
+              className={`rounded-full px-3 py-1 ${uploadMode === "manual" ? "bg-primary-600 text-white" : "border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200"}`}
+            >
+              Manual
+            </button>
           </div>
         </div>
 
         {uploadMode === "upload" && (
           <div className="flex items-center gap-3 text-xs">
             <label className="text-primary-200 hover:text-primary-100">
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)}
-                disabled={["uploading", "hashing"].includes(uploadStatus)}
-                className="hidden"
-              />
+              <input type="file" accept="video/*" onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)} disabled={["uploading", "hashing"].includes(uploadStatus)} className="hidden" />
               <span className="cursor-pointer">Pilih video</span>
             </label>
             <button
@@ -703,22 +692,28 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         )}
         {uploadMode === "upload" && ["uploading", "hashing"].includes(uploadStatus) && (
           <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
-            <div
-              className="h-2 bg-primary-500 transition-all"
-              style={{ width: `${uploadProgress}%` }}
-            />
+            <div className="h-2 bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
           </div>
         )}
         <input
           value={formData.mux_playback_id ?? formData.mux_video_id ?? ""}
-          onChange={(event) => setFormData((prev) => ({ ...prev, mux_playback_id: event.target.value, mux_video_id: event.target.value }))}
+          onChange={(event) => {
+            const value = event.target.value?.trim();
+            setFormData((prev) => ({
+              ...prev,
+              mux_playback_id: value,
+              mux_video_id: value,
+              mux_asset_id: null, // Reset asset ID when manually changing playback ID
+            }));
+            if (value) {
+              setUploadStatus("success");
+            }
+          }}
           placeholder="Playback ID dari Mux"
-          className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+          className="w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200"
           required
         />
-        {(errors.mux_playback_id || errors.mux_video_id) && (
-          <p className="text-xs text-rose-400">{errors.mux_playback_id || errors.mux_video_id}</p>
-        )}
+        {(errors.mux_playback_id || errors.mux_video_id) && <p className="text-xs text-rose-400">{errors.mux_playback_id || errors.mux_video_id}</p>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -750,11 +745,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         </label>
       </div>
 
-      { !videoReady && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Unggah video ke Mux terlebih dahulu untuk membuka pengisian metadata dan subtitle.
-        </div>
-      )}
+      {!videoReady && <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Unggah video ke Mux terlebih dahulu untuk membuka pengisian metadata dan subtitle.</div>}
 
       <div className="space-y-3 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-4">
         <div className="flex items-center justify-between">
@@ -773,13 +764,13 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         </div>
 
         {(formData.subtitles ?? []).map((subtitle, index) => (
-          <div key={index} className="space-y-2 rounded-2xl border border-slate-800/60 bg-slate-950/60 p-4">
-            <div className="flex items-center gap-3">
+          <div key={index} className="space-y-2 rounded-xl sm:rounded-2xl border border-slate-800/60 bg-slate-950/60 p-3 sm:p-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
               <select
                 value={subtitle.lang ?? "en"}
                 onChange={(event) => updateSubtitle(index, "lang", event.target.value)}
                 disabled={!videoReady}
-                className="w-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full sm:w-32 rounded-lg sm:rounded-xl border border-slate-800 bg-slate-950 px-2 sm:px-3 py-1.5 sm:py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {SUBTITLE_LANGUAGES.map((lang) => (
                   <option key={lang.code} value={lang.code}>
@@ -812,26 +803,16 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             />
             <label className="flex items-center justify-between text-xs text-slate-400">
               <span>Upload file .vtt / .srt</span>
-              <input
-                type="file"
-                accept=".vtt,.srt,text/vtt,application/x-subrip"
-                onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])}
-                className="text-xs"
-                disabled={!videoReady}
-              />
+              <input type="file" accept=".vtt,.srt,text/vtt,application/x-subrip" onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])} className="text-xs" disabled={!videoReady} />
             </label>
           </div>
         ))}
-        {errors.subtitles && Array.isArray(errors.subtitles) && (
-          <p className="text-xs text-rose-400">Periksa kembali data subtitle.</p>
-        )}
+        {errors.subtitles && Array.isArray(errors.subtitles) && <p className="text-xs text-rose-400">Periksa kembali data subtitle.</p>}
 
         <div className="flex items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400">
           <div>
             <p className="font-medium text-slate-200">Sinkronisasi Subtitle</p>
-            <p className="text-[11px] text-slate-500">
-              Pastikan URL subtitle publik sebelum mengirim ke Mux. Subtitle lama akan tetap tersedia.
-            </p>
+            <p className="text-[11px] text-slate-500">Pastikan URL subtitle publik sebelum mengirim ke Mux. Subtitle lama akan tetap tersedia.</p>
           </div>
           <button
             type="button"
@@ -850,22 +831,22 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
               : message.type === "error"
-                ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
-                : message.type === "warning"
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-                  : "border-slate-700 bg-slate-800/60 text-slate-200"
+              ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
+              : message.type === "warning"
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+              : "border-slate-700 bg-slate-800/60 text-slate-200"
           }`}
         >
           {message.text}
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
         <button
           type="submit"
           disabled={isSubmitting || !canSaveMovie}
           title={!canSaveMovie ? "Selesaikan tahap upload video dan sinkronisasi subtitle terlebih dahulu." : undefined}
-          className="rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+          className="rounded-xl sm:rounded-full bg-primary-600 px-4 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700 w-full sm:w-auto"
         >
           {isSubmitting ? "Menyimpan..." : submitLabel}
         </button>
@@ -877,9 +858,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               setErrors({});
               setMessage(null);
               setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-              setSubtitleUploadStatus(
-                (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle"
-              );
+              setSubtitleUploadStatus((initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle");
               setSubtitleSyncStatus("idle");
             }}
             className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"

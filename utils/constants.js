@@ -4,6 +4,8 @@
   EDITOR: "editor",
 };
 
+
+
 export const USER_PLANS = {
   FREE: "free",
   PREMIUM: "premium",
@@ -14,21 +16,7 @@ export const CONTENT_TYPES = {
   SERIES: "series",
 };
 
-export const CONTENT_CATEGORIES = [
-  "Action",
-  "Adventure",
-  "Animation",
-  "Comedy",
-  "Documentary",
-  "Drama",
-  "Fantasy",
-  "Horror",
-  "Kids",
-  "Mystery",
-  "Romance",
-  "Sci-Fi",
-  "Thriller",
-];
+export const CONTENT_CATEGORIES = ["Action", "Adventure", "Animation", "Comedy", "Documentary", "Drama", "Fantasy", "Horror", "Kids", "Mystery", "Romance", "Sci-Fi", "Thriller"];
 
 export const SUBTITLE_LANGUAGES = [
   { code: "en", label: "English" },
