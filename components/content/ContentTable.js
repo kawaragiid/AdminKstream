@@ -223,47 +223,86 @@ export default function ContentTable() {
           </div>
         </form>
 
-        <div className="overflow-hidden rounded-3xl border border-slate-800/60">
-          <table className="hidden min-w-full divide-y divide-slate-800/60 md:table">
-            <thead className="bg-slate-900/80">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Judul</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Kategori</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Tanggal</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-              {items.map((item) => (
-                <tr key={`${item.type}-${item.id}`} className="transition hover:bg-slate-900/60">
-                  <td className="px-4 py-4 text-sm font-medium text-slate-100">{item.title}</td>
-                  <td className="px-4 py-4 text-sm text-slate-300">{item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}</td>
-                  <td className="px-4 py-4 text-sm text-slate-300">{item.category}</td>
-                  <td className="px-4 py-4 text-right text-sm text-slate-300">{item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}</td>
-                  <td className="px-4 py-4 text-right text-sm text-slate-300">
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => openDetails(item)} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
-                        Detail
-                      </button>
-                      <button type="button" onClick={() => handleDelete(item)} className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
-                        Hapus
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!items.length && !loading && (
+        <div className="rounded-3xl border border-slate-800/60">
+          {/* Desktop Table View */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="min-w-full divide-y divide-slate-800/60">
+              <thead className="bg-slate-900/80">
                 <tr>
-                  <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={5}>
-                    Tidak ada konten.
-                  </td>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Judul</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Kategori</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Tanggal</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-slate-400">Aksi</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-          {loading && <div className="px-4 py-6 text-center text-sm text-slate-400">Memuat konten...</div>}
-          {error && <div className="px-4 py-6 text-center text-sm text-rose-300">{error}</div>}
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+                {items.map((item) => (
+                  <tr key={`${item.type}-${item.id}`} className="transition hover:bg-slate-900/60">
+                    <td className="px-4 py-4 text-sm font-medium text-slate-100">{item.title}</td>
+                    <td className="px-4 py-4 text-sm text-slate-300">{item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}</td>
+                    <td className="px-4 py-4 text-sm text-slate-300">{item.category}</td>
+                    <td className="px-4 py-4 text-right text-sm text-slate-300">{item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}</td>
+                    <td className="px-4 py-4 text-right text-sm text-slate-300">
+                      <div className="flex justify-end gap-2">
+                        <button type="button" onClick={() => openDetails(item)} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
+                          Detail
+                        </button>
+                        <button type="button" onClick={() => handleDelete(item)} className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+                          Hapus
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!items.length && !loading && (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={5}>
+                      Tidak ada konten.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="space-y-4 p-4 md:hidden">
+            {items.map((item) => (
+              <div key={`${item.type}-${item.id}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="font-semibold text-slate-100">{item.title}</p>
+                    <p className="text-xs text-slate-400">
+                      {item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"} / {item.category}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <button type="button" onClick={() => openDetails(item)} className="whitespace-nowrap rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
+                      Detail
+                    </button>
+                    <button type="button" onClick={() => handleDelete(item)} className="whitespace-nowrap rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!items.length && !loading && (
+              <div className="px-4 py-6 text-center text-sm text-slate-500">
+                Tidak ada konten.
+              </div>
+            )}
+          </div>
+
+          {(loading || error) && (
+            <div className="px-4 py-6 text-center text-sm text-slate-400">
+              {loading ? "Memuat konten..." : error}
+            </div>
+          )}
         </div>
       </div>
 

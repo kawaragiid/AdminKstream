@@ -50,66 +50,88 @@ const AuditLogTable = ({ initialLogs = [] }) => {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-800/60">
-        <table className="min-w-full divide-y divide-slate-800/60">
-          <thead className="bg-slate-900/80">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Waktu
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Aksi
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Target
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Admin
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-            {logs.map((log) => (
-              <tr key={log.id ?? `${log.action}-${log.createdAt}`}
-                className="transition hover:bg-slate-900/60"
-              >
-                <td className="px-4 py-4 text-sm text-slate-300">
-                  {log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}
-                </td>
-                <td className="px-4 py-4 text-sm text-slate-200">
-                  <p className="font-medium">{log.action}</p>
-                  {log.metadata && (
-                    <p className="text-xs text-slate-500">{JSON.stringify(log.metadata)}</p>
-                  )}
-                </td>
-                <td className="px-4 py-4 text-sm text-slate-300">
-                  <p>{log.targetType ?? "-"}</p>
-                  {log.targetId && <p className="text-xs text-slate-500">{log.targetId}</p>}
-                </td>
-                <td className="px-4 py-4 text-sm text-slate-300">
-                  <p>{log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
-                  {log.actor?.email && (
-                    <p className="text-xs text-slate-500">{log.actor.email}</p>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {!logs.length && !loading && (
+      <div className="rounded-3xl border border-slate-800/60">
+        {/* Desktop Table View */}
+        <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-full divide-y divide-slate-800/60">
+            <thead className="bg-slate-900/80">
               <tr>
-                <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
-                  Belum ada aktivitas admin.
-                </td>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Waktu
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Aksi
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Target
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Admin
+                </th>
               </tr>
-            )}
-          </tbody>
-        </table>
-        {loading && (
+            </thead>
+            <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
+              {logs.map((log) => (
+                <tr key={log.id ?? `${log.action}-${log.createdAt}`}
+                  className="transition hover:bg-slate-900/60"
+                >
+                  <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-300">
+                    {log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-200">
+                    <p className="font-medium">{log.action}</p>
+                    {log.metadata && (
+                      <p className="max-w-xs truncate text-xs text-slate-500" title={JSON.stringify(log.metadata)}>{JSON.stringify(log.metadata)}</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-300">
+                    <p>{log.targetType ?? "-"}</p>
+                    {log.targetId && <p className="text-xs text-slate-500">{log.targetId}</p>}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-300">
+                    <p>{log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
+                    {log.actor?.email && (
+                      <p className="text-xs text-slate-500">{log.actor.email}</p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {!logs.length && !loading && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
+                    Belum ada aktivitas admin.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="space-y-4 p-4 md:hidden">
+          {logs.map((log) => (
+            <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm">
+              <div className="flex items-start justify-between gap-4">
+                <p className="font-semibold text-slate-100">{log.action}</p>
+                <p className="flex-shrink-0 whitespace-nowrap text-xs text-slate-400">
+                  {log.createdAt ? new Date(log.createdAt).toLocaleDateString("id-ID") : "-"}
+                </p>
+              </div>
+              <div className="mt-2 space-y-2 text-xs">
+                <p><span className="font-medium text-slate-400">Target:</span> {log.targetType ?? "-"} ({log.targetId ?? "N/A"})</p>
+                <p><span className="font-medium text-slate-400">Admin:</span> {log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
+                {log.metadata && (
+                  <p className="max-w-full truncate text-slate-500" title={JSON.stringify(log.metadata)}><span className="font-medium text-slate-400">Detail:</span> {JSON.stringify(log.metadata)}</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {(loading || error || (!logs.length && !loading)) && (
           <div className="px-4 py-6 text-center text-sm text-slate-400">
-            Memuat audit log...
+            {loading ? "Memuat audit log..." : error ? error : "Belum ada aktivitas admin."}
           </div>
-        )}
-        {error && (
-          <div className="px-4 py-4 text-center text-sm text-rose-300">{error}</div>
         )}
       </div>
     </div>
