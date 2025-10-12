@@ -20,9 +20,7 @@ export default async function AdminLayout({ children }) {
       <div className="flex flex-1 flex-col">
         <Header session={session} />
         <main className="flex-1 overflow-y-auto bg-slate-900 p-3 sm:p-4 md:p-6 lg:p-8 pb-20 md:pb-6">
-          <div className="mx-auto max-w-[1920px]">
-            {children}
-          </div>
+          <div className="mx-auto max-w-[1920px]">{children}</div>
         </main>
       </div>
     </div>
