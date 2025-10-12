@@ -1,10 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  CONTENT_CATEGORIES,
-  CONTENT_TYPES,
-} from "@/utils/constants";
+import { CONTENT_CATEGORIES, CONTENT_TYPES } from "@/utils/constants";
 import MovieForm from "@/components/upload/MovieForm";
 import SeriesForm from "@/components/upload/SeriesForm";
 
@@ -64,11 +61,7 @@ export default function ContentTable() {
   };
 
   const handleDelete = async (item) => {
-    const confirmed = window.confirm(
-      item.type === CONTENT_TYPES.MOVIE
-        ? `Hapus movie "${item.title}"? Tindakan ini tidak bisa dibatalkan.`
-        : `Hapus series "${item.title}" beserta seluruh episode?`
-    );
+    const confirmed = window.confirm(item.type === CONTENT_TYPES.MOVIE ? `Hapus movie "${item.title}"? Tindakan ini tidak bisa dibatalkan.` : `Hapus series "${item.title}" beserta seluruh episode?`);
     if (!confirmed) return;
 
     try {
@@ -141,8 +134,7 @@ export default function ContentTable() {
       return;
     }
 
-    const candidate =
-      selectedItem.mux_asset_id ?? selectedItem.mux_playback_id ?? selectedItem.mux_video_id ?? null;
+    const candidate = selectedItem.mux_asset_id ?? selectedItem.mux_playback_id ?? selectedItem.mux_video_id ?? null;
 
     if (!candidate) {
       setMuxDetails(null);
@@ -200,10 +192,7 @@ export default function ContentTable() {
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
       <div className="space-y-6">
-        <form
-          onSubmit={applyFilters}
-          className="grid gap-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 md:grid-cols-3"
-        >
+        <form onSubmit={applyFilters} className="grid gap-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 md:grid-cols-3">
           <label className="text-sm text-slate-300 md:col-span-2">
             Pencarian
             <input
@@ -216,11 +205,7 @@ export default function ContentTable() {
           </label>
           <label className="text-sm text-slate-300">
             Kategori
-            <select
-              value={filters.category}
-              onChange={(event) => setFilters((prev) => ({ ...prev, category: event.target.value }))}
-              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200"
-            >
+            <select value={filters.category} onChange={(event) => setFilters((prev) => ({ ...prev, category: event.target.value }))} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200">
               {categories.map((category) => (
                 <option key={category || "all"} value={category}>
                   {category || "Semua"}
@@ -229,24 +214,17 @@ export default function ContentTable() {
             </select>
           </label>
           <div className="md:col-span-3 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white"
-            >
+            <button type="button" onClick={resetFilters} className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white">
               Reset
             </button>
-            <button
-              type="submit"
-              className="rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500"
-            >
+            <button type="submit" className="rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500">
               Terapkan Filter
             </button>
           </div>
         </form>
 
         <div className="overflow-hidden rounded-3xl border border-slate-800/60">
-          <table className="min-w-full divide-y divide-slate-800/60">
+          <table className="hidden min-w-full divide-y divide-slate-800/60 md:table">
             <thead className="bg-slate-900/80">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Judul</th>
@@ -259,30 +237,16 @@ export default function ContentTable() {
             <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
               {items.map((item) => (
                 <tr key={`${item.type}-${item.id}`} className="transition hover:bg-slate-900/60">
-                  <td className="px-4 py-4 text-sm font-medium text-slate-100">
-                    {item.title}
-                  </td>
-                  <td className="px-4 py-4 text-sm text-slate-300">
-                    {item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}
-                  </td>
+                  <td className="px-4 py-4 text-sm font-medium text-slate-100">{item.title}</td>
+                  <td className="px-4 py-4 text-sm text-slate-300">{item.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}</td>
                   <td className="px-4 py-4 text-sm text-slate-300">{item.category}</td>
-                  <td className="px-4 py-4 text-right text-sm text-slate-300">
-                    {item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}
-                  </td>
+                  <td className="px-4 py-4 text-right text-sm text-slate-300">{item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"}</td>
                   <td className="px-4 py-4 text-right text-sm text-slate-300">
                     <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openDetails(item)}
-                        className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
-                      >
+                      <button type="button" onClick={() => openDetails(item)} className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
                         Detail
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10"
-                      >
+                      <button type="button" onClick={() => handleDelete(item)} className="rounded-full border border-transparent px-3 py-1.5 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
                         Hapus
                       </button>
                     </div>
@@ -298,19 +262,13 @@ export default function ContentTable() {
               )}
             </tbody>
           </table>
-          {loading && (
-            <div className="px-4 py-6 text-center text-sm text-slate-400">Memuat konten...</div>
-          )}
-          {error && (
-            <div className="px-4 py-6 text-center text-sm text-rose-300">{error}</div>
-          )}
+          {loading && <div className="px-4 py-6 text-center text-sm text-slate-400">Memuat konten...</div>}
+          {error && <div className="px-4 py-6 text-center text-sm text-rose-300">{error}</div>}
         </div>
       </div>
 
       <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
-        {!selectedItem && (
-          <p className="text-sm text-slate-500">Pilih konten untuk melihat detail atau mengedit.</p>
-        )}
+        {!selectedItem && <p className="text-sm text-slate-500">Pilih konten untuk melihat detail atau mengedit.</p>}
 
         {selectedItem && !editMode && (
           <div className="space-y-4">
@@ -323,9 +281,7 @@ export default function ContentTable() {
             </header>
             {detailLoading && <p className="text-xs text-slate-500">Memuat data terbaru dari Firestore...</p>}
             {detailError && <p className="text-xs text-rose-400">{detailError}</p>}
-            <p className="text-sm text-slate-300 whitespace-pre-line">
-              {selectedItem.description}
-            </p>
+            <p className="text-sm text-slate-300 whitespace-pre-line">{selectedItem.description}</p>
             {selectedItem.type === CONTENT_TYPES.MOVIE ? (
               <ul className="space-y-1 text-xs text-slate-400">
                 <li>Playback ID: {selectedItem.mux_playback_id ?? selectedItem.mux_video_id}</li>
@@ -361,23 +317,15 @@ export default function ContentTable() {
                   <li>Asset ID: {muxDetails.assetId ?? muxDetails.id ?? "-"}</li>
                   <li>Status: {muxDetails.status ?? "-"}</li>
                   {muxDetails.duration && <li>Durasi: {formatDuration(muxDetails.duration)}</li>}
-                  {muxDetails.max_stored_resolution && (
-                    <li>Resolusi: {muxDetails.max_stored_resolution}</li>
-                  )}
-                  {muxDetails.created_at && (
-                    <li>Dibuat: {new Date(muxDetails.created_at).toLocaleString("id-ID")}</li>
-                  )}
+                  {muxDetails.max_stored_resolution && <li>Resolusi: {muxDetails.max_stored_resolution}</li>}
+                  {muxDetails.created_at && <li>Dibuat: {new Date(muxDetails.created_at).toLocaleString("id-ID")}</li>}
                 </ul>
               ) : (
                 <p className="text-xs text-slate-500">Belum ada data asset Mux.</p>
               )}
             </div>
             <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setEditMode(selectedItem.type)}
-                className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200"
-              >
+              <button type="button" onClick={() => setEditMode(selectedItem.type)} className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200">
                 Edit {selectedItem.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}
               </button>
               <button
