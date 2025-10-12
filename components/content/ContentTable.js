@@ -191,7 +191,7 @@ export default function ContentTable() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-      <div className="space-y-6">
+      <div className={`space-y-6 ${selectedItem ? "hidden lg:block" : "block"}`}>
         <form onSubmit={applyFilters} className="grid gap-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 md:grid-cols-3">
           <label className="text-sm text-slate-300 md:col-span-2">
             Pencarian
@@ -310,7 +310,12 @@ export default function ContentTable() {
         {selectedItem && !editMode && (
           <div className="space-y-4">
             <header className="space-y-1">
-              <p className="text-xs uppercase tracking-widest text-slate-500">Detail Konten</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-widest text-slate-500">Detail Konten</p>
+                <button type="button" onClick={() => setSelectedItem(null)} className="rounded-full border border-slate-700 px-4 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 hover:text-primary-200 lg:hidden">
+                  Kembali
+                </button>
+              </div>
               <h3 className="text-lg font-semibold text-slate-100">{selectedItem.title}</h3>
               <p className="text-xs text-slate-500">
                 {selectedItem.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"} • {selectedItem.category}

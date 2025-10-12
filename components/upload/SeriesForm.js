@@ -742,7 +742,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   // ====================================================================
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className={`space-y-6 ${editingEpisodeIndex !== null ? "hidden lg:block" : "block"}`}>
         {/* FORM SERIES UTAMA */}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-300">
