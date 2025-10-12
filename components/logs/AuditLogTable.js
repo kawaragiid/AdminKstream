@@ -45,8 +45,8 @@ const AuditLogTable = ({ initialLogs = [] }) => {
     return (
       <>
         {/* Desktop Table View */}
-        <div className="hidden overflow-x-auto md:block">
-          <table className="min-w-full divide-y divide-slate-800/60">
+        <div className="overflow-x-auto">
+          <table className="hidden min-w-full divide-y divide-slate-800/60 md:table">
             <thead className="bg-slate-900/80">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">Waktu</th>
@@ -78,7 +78,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
         </div>
 
         {/* Mobile Card View */}
-        <div className="space-y-4 p-4 md:hidden border-2 border-blue-500">
+        <div className="space-y-4 p-4 md:hidden">
           {logs.map((log) => (
             <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm">
               <div className="flex items-start justify-between gap-4">
