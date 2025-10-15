@@ -549,8 +549,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         return;
       }
 
-      // Simpan movie ke backend
-      const response = await fetch("/api/movies/save", {
+      // Simpan movie ke backend (create: /api/movies, update: /api/movies/:id)
+      const response = await fetch(`/api/movies${initialData?.id ? `/${initialData.id}` : ""}`, {
         method: initialData?.id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
