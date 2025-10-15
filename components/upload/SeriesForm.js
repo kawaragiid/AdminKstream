@@ -213,11 +213,48 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   // ====================================================================
   const computeFileHash = async (file) => {
     if (!file) return null;
-    const buffer = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest("SHA-256", buffer);
-    const hashArray = Array.from(new Uint8Array(digest));
-    const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-    return { sha256, size: file.size };
+    const MAX_FULL_HASH = 64 * 1024 * 1024; // 64MB
+    const SAMPLE_SIZE = 2 * 1024 * 1024; // 2MB
+    try {
+      if (file.size <= MAX_FULL_HASH) {
+        const buffer = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest("SHA-256", buffer);
+        const hashArray = Array.from(new Uint8Array(digest));
+        const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        return { sha256, size: file.size };
+      }
+
+      const first = file.slice(0, SAMPLE_SIZE);
+      const middleStart = Math.max(0, Math.floor(file.size / 2) - Math.floor(SAMPLE_SIZE / 2));
+      const middle = file.slice(middleStart, middleStart + SAMPLE_SIZE);
+      const lastStart = Math.max(0, file.size - SAMPLE_SIZE);
+      const last = file.slice(lastStart, lastStart + SAMPLE_SIZE);
+      const [b1, b2, b3] = await Promise.all([
+        first.arrayBuffer(),
+        middle.arrayBuffer(),
+        last.arrayBuffer(),
+      ]);
+      const totalLen = b1.byteLength + b2.byteLength + b3.byteLength;
+      const combined = new Uint8Array(totalLen);
+      combined.set(new Uint8Array(b1), 0);
+      combined.set(new Uint8Array(b2), b1.byteLength);
+      combined.set(new Uint8Array(b3), b1.byteLength + b2.byteLength);
+      const digest = await crypto.subtle.digest("SHA-256", combined);
+      const hashArray = Array.from(new Uint8Array(digest));
+      const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      return { sha256, size: file.size };
+    } catch (_e) {
+      try {
+        const encoder = new TextEncoder();
+        const meta = `${file.name}:${file.size}:${file.lastModified ?? 0}`;
+        const digest = await crypto.subtle.digest("SHA-256", encoder.encode(meta));
+        const hashArray = Array.from(new Uint8Array(digest));
+        const sha256 = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+        return { sha256, size: file.size };
+      } catch {
+        return { sha256: String(file.size), size: file.size };
+      }
+    }
   };
 
   const normalizePlaybackValue = (raw) => {
