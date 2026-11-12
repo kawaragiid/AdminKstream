@@ -4,7 +4,8 @@ import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
 import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
 import { fetchAnalyticsSummary } from "@/lib/analyticsService";
 import { listUsers } from "@/lib/usersService";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 function toCsv(records) {
   if (!records?.length) return "";
@@ -25,10 +26,8 @@ function toCsv(records) {
 }
 
 export async function GET(request) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") ?? "content";
@@ -59,6 +58,9 @@ export async function GET(request) {
     }
 
     if (type === "users") {
+      if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
+        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor data pengguna." }, { status: 403 });
+      }
       const { users } = await listUsers({ limit: 1000 });
       if (format === "json") {
         return NextResponse.json({ data: users });
@@ -83,6 +85,9 @@ export async function GET(request) {
     }
 
     if (type === "firestore") {
+      if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
+        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor Firestore." }, { status: 403 });
+      }
       if (!isFirebaseConfigured) {
         return NextResponse.json({ error: "Firebase Admin belum dikonfigurasi untuk export Firestore." }, { status: 400 });
       }

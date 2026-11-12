@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { createMovie, createSeries } from "@/lib/firestoreService";
 import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
-import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
-import { getSessionUser } from "@/lib/session";
+import { ADMIN_ROLES, FIRESTORE_COLLECTIONS } from "@/utils/constants";
+import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 
+const MAX_IMPORT_DOCS = 500;
+
 export async function POST(request) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   try {
     const payload = await request.json();
@@ -38,26 +38,37 @@ export async function POST(request) {
       return NextResponse.json({ data: results });
     }
 
-    // Import Firestore collections (JSON)
+    // Import Firestore collections (JSON) - hanya super-admin dan tanpa koleksi users
     if (payload.type === "firestore") {
+      if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
+        return NextResponse.json({ error: "Hanya super-admin yang dapat mengimpor Firestore." }, { status: 403 });
+      }
       if (!isFirebaseConfigured) {
         return NextResponse.json({ error: "Firebase Admin belum dikonfigurasi untuk import Firestore." }, { status: 400 });
       }
       const { collections, merge = true } = payload;
-      if (!collections || typeof collections !== 'object') {
+      if (!collections || typeof collections !== "object") {
         return NextResponse.json({ error: "Payload collections tidak valid." }, { status: 400 });
       }
 
-      const allowed = new Set(Object.values(FIRESTORE_COLLECTIONS));
+      const allowed = new Set(
+        Object.values(FIRESTORE_COLLECTIONS).filter((col) => col !== FIRESTORE_COLLECTIONS.ADMIN_USERS)
+      );
       const firestore = getFirestoreClient();
       const summary = [];
       for (const [col, docs] of Object.entries(collections)) {
-        if (!allowed.has(col)) continue; // skip koleksi yang tidak dikenal
+        if (!allowed.has(col)) continue; // skip koleksi yang tidak dikenal atau sensitif (users)
         if (!Array.isArray(docs)) continue;
         for (const doc of docs) {
+          if (summary.length >= MAX_IMPORT_DOCS) {
+            return NextResponse.json(
+              { error: `Melebihi batas maksimum ${MAX_IMPORT_DOCS} dokumen per import.`, data: summary },
+              { status: 400 }
+            );
+          }
           const { id, ...data } = doc || {};
-          if (!id || !data) continue;
-          await firestore.collection(col).doc(id).set(data, { merge });
+          if (!id || typeof id !== "string" || !data || typeof data !== "object") continue;
+          await firestore.collection(col).doc(id).set(data, { merge: Boolean(merge) });
           summary.push({ col, id });
         }
       }

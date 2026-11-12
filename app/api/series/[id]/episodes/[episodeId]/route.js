@@ -2,14 +2,12 @@ import { NextResponse } from "next/server";
 import { getSeries, updateEpisode, deleteEpisode } from "@/lib/firestoreService";
 import { deleteAsset, isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
 import { validateEpisode } from "@/utils/validators";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 
 export async function PUT(request, { params }) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin", "editor"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const { id, episodeId } = await params;
@@ -60,10 +58,8 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin", "editor"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const { id, episodeId } = await params;

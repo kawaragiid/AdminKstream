@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
 import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
 
+function sanitizePhotoUrl(value) {
+  if (!value) return null;
+  try {
+    const parsed = new URL(String(value).trim());
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
-  const session = await getSessionUser();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
   if (!isFirebaseConfigured) return NextResponse.json({ data: session });
   const firestore = getFirestoreClient();
   const doc = await firestore.collection(FIRESTORE_COLLECTIONS.ADMIN_USERS).doc(session.uid).get();
@@ -14,15 +25,20 @@ export async function GET() {
 }
 
 export async function PUT(request) {
-  const session = await getSessionUser();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
   const body = await request.json();
-  if (!isFirebaseConfigured) return NextResponse.json({ data: { displayName: body.displayName, photoURL: body.photoURL } });
+  const displayName = typeof body?.displayName === "string" ? body.displayName.trim().slice(0, 100) || null : null;
+  const photoURL = body?.photoURL ? sanitizePhotoUrl(body.photoURL) : null;
+  if (body?.photoURL && !photoURL) {
+    return NextResponse.json({ error: "URL foto profil tidak valid." }, { status: 400 });
+  }
+  if (!isFirebaseConfigured) return NextResponse.json({ data: { displayName, photoURL } });
   const firestore = getFirestoreClient();
   await firestore.collection(FIRESTORE_COLLECTIONS.ADMIN_USERS).doc(session.uid).set({
-    displayName: body.displayName ?? null,
-    photoUrl: body.photoURL ?? null,
+    displayName,
+    photoUrl: photoURL,
   }, { merge: true });
-  return NextResponse.json({ data: { displayName: body.displayName ?? null, photoURL: body.photoURL ?? null } });
+  return NextResponse.json({ data: { displayName, photoURL } });
 }
 

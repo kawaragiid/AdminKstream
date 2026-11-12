@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { createDirectUpload, isMuxConfigured } from "@/lib/muxService";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 
 export async function POST(request) {
-  const session = await getSessionUser();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
 
   if (!isMuxConfigured) {
     const mock = await createDirectUpload({ passthrough: { admin: session.uid } });

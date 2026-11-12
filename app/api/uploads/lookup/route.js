@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
 import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
 
 export async function POST(request) {
-  const session = await getSessionUser();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const body = await request.json();

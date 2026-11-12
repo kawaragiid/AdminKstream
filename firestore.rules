@@ -2,28 +2,44 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // User profile & subscription metadata
+    // User profile: pemilik hanya boleh baca & ubah field non-otorisasi.
+    // Field otorisasi (role, plan, expiresAt, isActive, status, permissions) hanya boleh ditulis oleh server (Admin SDK).
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      allow create: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.get('role', 'pelanggan') == 'pelanggan'
+        && !request.resource.data.keys().hasAny(['plan', 'expiresAt', 'isActive', 'status', 'permissions']);
+
+      allow update: if request.auth != null
+        && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'role', 'plan', 'expiresAt', 'isActive', 'status', 'permissions'
+        ]);
+
+      allow delete: if false;
     }
 
-    // Konten premium
-    match /premiumContent/{docId} {
-      allow read: if isAllowed();
-      allow write: if false; // hanya server/admin
+    // Konten publik (model gratis + ads): hanya server/Admin SDK yang boleh menulis
+    match /movies/{docId} {
+      allow read: if true;
+      allow write: if false;
     }
 
-    function isAllowed() {
-      return request.auth != null && (
-        // Role admin/editor selalu boleh
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['super-admin', 'admin', 'editor']
-        ||
-        // Role pelanggan wajib masih aktif (expiresAt bertipe timestamp)
-        (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'pelanggan'
-          && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.expiresAt > request.time
-        )
-      );
+    match /series/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /kstream-settings/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Koleksi internal admin (audit logs, analytics, notifications): hanya Admin SDK
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

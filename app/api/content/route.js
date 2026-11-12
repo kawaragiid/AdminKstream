@@ -1,12 +1,10 @@
 ﻿import { NextResponse } from "next/server";
 import { listAllMedia } from "@/lib/firestoreService";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 
 export async function GET(request) {
-  const session = await getSessionUser();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole();
+  if (authError) return authError;
 
   const { searchParams } = new URL(request.url);
   const filters = {

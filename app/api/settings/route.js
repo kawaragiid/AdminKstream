@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { fetchPlatformSettings, updatePlatformSettings } from "@/lib/settingsService";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function GET() {
-  const session = await getSessionUser();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const settings = await fetchPlatformSettings();
@@ -18,10 +17,8 @@ export async function GET() {
 }
 
 export async function PUT(request) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   try {
     const payload = await request.json();

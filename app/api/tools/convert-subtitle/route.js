@@ -1,7 +1,11 @@
 ﻿import { NextResponse } from "next/server";
 import { convertSrtToVtt } from "@/utils/subtitles";
+import { requireRole } from "@/lib/session";
 
 export async function POST(request) {
+  const { error: authError } = await requireRole();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { content, mimeType } = body ?? {};

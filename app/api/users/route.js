@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
 import { listUsers, updateUserRole, updateUserStatus, createAdminUser, updateUserSubscription } from "@/lib/usersService";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
+import { ADMIN_ROLES, CUSTOMER_ROLE, USER_PLANS } from "@/utils/constants";
 
-function ensureAdmin(session) {
-  return session && ["super-admin", "admin"].includes(session.role);
-}
+const VALID_ROLES = new Set([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN, ADMIN_ROLES.EDITOR, CUSTOMER_ROLE]);
+const VALID_PLANS = new Set([USER_PLANS.FREE, USER_PLANS.PREMIUM]);
 
 export async function GET(request) {
-  const session = await getSessionUser();
-  if (!ensureAdmin(session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   const { searchParams } = new URL(request.url);
-  const limit = Number.parseInt(searchParams.get("limit") ?? "50", 10);
+  const rawLimit = Number.parseInt(searchParams.get("limit") ?? "50", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 1000) : 50;
   const pageToken = searchParams.get("pageToken") ?? undefined;
 
   try {
@@ -27,14 +26,31 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const session = await getSessionUser();
-  if (!ensureAdmin(session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   try {
     const payload = await request.json();
-    const user = await createAdminUser(payload);
+    const targetRole = payload?.role ?? ADMIN_ROLES.ADMIN;
+    const targetPlan = payload?.plan ?? USER_PLANS.FREE;
+
+    if (!VALID_ROLES.has(targetRole) || !VALID_PLANS.has(targetPlan)) {
+      return NextResponse.json({ error: "Role atau plan tidak valid." }, { status: 400 });
+    }
+    if (targetRole === ADMIN_ROLES.SUPER_ADMIN && session.role !== ADMIN_ROLES.SUPER_ADMIN) {
+      return NextResponse.json({ error: "Hanya super-admin yang dapat membuat super-admin." }, { status: 403 });
+    }
+    if (!payload?.email || !payload?.password || String(payload.password).length < 6) {
+      return NextResponse.json({ error: "Email dan password minimal 6 karakter wajib diisi." }, { status: 400 });
+    }
+
+    const user = await createAdminUser({
+      email: String(payload.email).trim(),
+      password: String(payload.password),
+      displayName: payload.displayName ? String(payload.displayName).trim() : undefined,
+      role: targetRole,
+      plan: targetPlan,
+    });
 
     await recordAuditLog({
       actor: session,
@@ -52,10 +68,8 @@ export async function POST(request) {
 }
 
 export async function PATCH(request) {
-  const session = await getSessionUser();
-  if (!ensureAdmin(session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   try {
     const payload = await request.json();
@@ -64,7 +78,16 @@ export async function PATCH(request) {
     }
 
     if (payload.action === "update-role") {
-      await updateUserRole(payload.uid, { role: payload.role, plan: payload.plan });
+      if (payload.role && !VALID_ROLES.has(payload.role)) {
+        return NextResponse.json({ error: "Role tidak valid." }, { status: 400 });
+      }
+      if (payload.plan && !VALID_PLANS.has(payload.plan)) {
+        return NextResponse.json({ error: "Plan tidak valid." }, { status: 400 });
+      }
+      if (payload.role === ADMIN_ROLES.SUPER_ADMIN && session.role !== ADMIN_ROLES.SUPER_ADMIN) {
+        return NextResponse.json({ error: "Hanya super-admin yang dapat menetapkan role super-admin." }, { status: 403 });
+      }
+      await updateUserRole(payload.uid, { role: payload.role, plan: payload.plan, actorRole: session.role });
       await recordAuditLog({
         actor: session,
         action: "user.update-role",

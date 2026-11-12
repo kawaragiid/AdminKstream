@@ -2,14 +2,13 @@ import { NextResponse } from "next/server";
 import { getSeries, updateSeries, deleteSeries } from "@/lib/firestoreService";
 import { deleteAsset, isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
-import { getSessionUser } from "@/lib/session";
+import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function GET(_request, { params }) {
-  const session = await getSessionUser();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const { id } = await params;
@@ -25,10 +24,8 @@ export async function GET(_request, { params }) {
 }
 
 export async function PUT(request, { params }) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin", "editor"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole();
+  if (authError) return authError;
 
   try {
     const { id } = await params;
@@ -85,10 +82,8 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const session = await getSessionUser();
-  if (!session || !["super-admin", "admin"].includes(session.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  if (authError) return authError;
 
   try {
     const { id } = await params;
