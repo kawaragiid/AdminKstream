@@ -99,7 +99,10 @@ export async function PATCH(request) {
     }
 
     if (payload.action === "update-status") {
-      await updateUserStatus(payload.uid, { disabled: payload.disabled });
+      if (typeof payload.disabled !== "boolean") {
+        return NextResponse.json({ error: "Status disabled harus boolean." }, { status: 400 });
+      }
+      await updateUserStatus(payload.uid, { disabled: payload.disabled, actorRole: session.role });
       await recordAuditLog({
         actor: session,
         action: payload.disabled ? "user.suspend" : "user.activate",

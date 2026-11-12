@@ -33,9 +33,10 @@ export async function POST(request) {
   } catch (error) {
     console.error("POST /api/auth/session", error);
     const isSuspended = error.message?.includes("ditangguhkan");
+    const isAuthError = typeof error?.code === "string" && error.code.startsWith("auth/");
     return NextResponse.json(
-      { error: isSuspended ? "Akun admin ditangguhkan." : "Gagal membuat sesi." },
-      { status: isSuspended ? 403 : 500 }
+      { error: isSuspended ? "Akun admin ditangguhkan." : isAuthError ? "Token sesi tidak valid atau kedaluwarsa." : "Gagal membuat sesi." },
+      { status: isSuspended ? 403 : isAuthError ? 401 : 500 }
     );
   }
 }
