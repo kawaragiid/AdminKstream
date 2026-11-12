@@ -15,7 +15,7 @@ const Indicator = () => (
 
 const Sidebar = ({ session }) => {
   const pathname = usePathname();
-  const role = session?.role ?? ADMIN_ROLES.EDITOR;
+  const role = session?.role ?? ADMIN_ROLES.ADMIN;
   const [expanded, setExpanded] = useState(true);
   const navigation = ADMIN_NAVIGATION.filter((item) => item.roles.includes(role));
 
@@ -40,7 +40,7 @@ const Sidebar = ({ session }) => {
         {expanded && (
           <div>
             <p className="text-lg font-semibold tracking-tight">AdminKstream</p>
-            <p className="text-xs text-slate-400">{session?.role?.toUpperCase() ?? "EDITOR"}</p>
+            <p className="text-xs text-slate-400">{session?.role?.toUpperCase() ?? "ADMIN"}</p>
           </div>
         )}
       </div>
