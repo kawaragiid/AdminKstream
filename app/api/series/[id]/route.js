@@ -36,31 +36,47 @@ export async function PUT(request, { params }) {
 
     const payload = await request.json();
     const merged = { ...existing, ...payload };
-    const muxInfo = await normalizeMuxMetadata({
-      assetId: merged.mux_asset_id,
-      playbackId: merged.mux_playback_id,
-      videoId: merged.mux_video_id,
-    });
-    merged.mux_asset_id = muxInfo.assetId;
-    merged.mux_playback_id = muxInfo.playbackId;
-    merged.mux_video_id = muxInfo.videoId;
+    if (payload.mux_asset_id !== undefined || payload.mux_playback_id !== undefined || payload.mux_video_id !== undefined) {
+      const muxInfo = await normalizeMuxMetadata({
+        assetId: merged.mux_asset_id,
+        playbackId: merged.mux_playback_id,
+        videoId: merged.mux_video_id,
+      });
+      merged.mux_asset_id = muxInfo.assetId;
+      merged.mux_playback_id = muxInfo.playbackId;
+      merged.mux_video_id = muxInfo.videoId;
+    }
 
     if (Array.isArray(merged.episodes)) {
+      const existingEpisodes = Array.isArray(existing.episodes) ? existing.episodes : [];
       merged.episodes = await Promise.all(
         merged.episodes.map(async (episode) => {
+          const matchedExisting = existingEpisodes.find(
+            (ep) =>
+              (episode?.episodeId && ep?.episodeId === episode.episodeId) ||
+              (episode?.epNumber !== undefined && ep?.epNumber === episode.epNumber)
+          );
           const episodeMux = await normalizeMuxMetadata({
-            assetId: episode?.mux_asset_id,
-            playbackId: episode?.mux_playback_id,
-            videoId: episode?.mux_video_id,
+            assetId: episode?.mux_asset_id ?? matchedExisting?.mux_asset_id,
+            playbackId: episode?.mux_playback_id ?? matchedExisting?.mux_playback_id,
+            videoId: episode?.mux_video_id ?? matchedExisting?.mux_video_id,
           });
           return {
+            ...(matchedExisting ?? {}),
             ...episode,
+            episodeId: episode?.episodeId ?? matchedExisting?.episodeId,
+            createdAt: episode?.createdAt ?? matchedExisting?.createdAt,
             mux_asset_id: episodeMux.assetId,
             mux_playback_id: episodeMux.playbackId,
             mux_video_id: episodeMux.videoId,
           };
         })
       );
+    }
+
+    const validation = validateSeriesPayload(merged);
+    if (!validation.valid) {
+      return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
     }
 
     const { id: _omit, ...data } = merged;
@@ -87,14 +103,26 @@ export async function DELETE(_request, { params }) {
 
   try {
     const { id } = await params;
+    const current = await getSeries(id);
+    if (!current) {
+      return NextResponse.json({ error: "Series tidak ditemukan." }, { status: 404 });
+    }
     // Hapus semua asset Mux episode jika ada
     try {
-      const current = await getSeries(id);
       const episodes = current?.episodes ?? [];
       if (Array.isArray(episodes) && isMuxConfigured) {
         for (const ep of episodes) {
-          if (ep?.mux_asset_id) {
-            try { await deleteAsset(ep.mux_asset_id); } catch (e) { console.warn('Gagal hapus asset', ep.mux_asset_id); }
+          let assetId = ep?.mux_asset_id ?? null;
+          if (!assetId && (ep?.mux_playback_id || ep?.mux_video_id)) {
+            const muxInfo = await normalizeMuxMetadata({
+              assetId: ep?.mux_asset_id,
+              playbackId: ep?.mux_playback_id,
+              videoId: ep?.mux_video_id,
+            });
+            assetId = muxInfo.assetId;
+          }
+          if (assetId) {
+            try { await deleteAsset(assetId); } catch (e) { console.warn('Gagal hapus asset', assetId); }
           }
         }
       }

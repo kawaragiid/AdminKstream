@@ -54,7 +54,8 @@ export default function LoginForm({ errorCode }) {
       });
 
       if (!response.ok) {
-        throw new Error("Gagal menyimpan sesi.");
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Gagal menyimpan sesi.");
       }
 
       router.replace("/");
@@ -85,7 +86,8 @@ export default function LoginForm({ errorCode }) {
       });
 
       if (!response.ok) {
-        throw new Error("Tidak dapat membuat sesi admin.");
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Tidak dapat membuat sesi admin.");
       }
 
       router.replace("/");

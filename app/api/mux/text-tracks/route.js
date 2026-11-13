@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { addMultipleTextTracks, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
 import { requireRole } from "@/lib/session";
+import { deleteTempSubtitleFromStorage } from "@/lib/storage";
 
 export async function POST(request) {
   const { error: authError } = await requireRole();
@@ -40,7 +41,24 @@ export async function POST(request) {
     }
 
     const results = await addMultipleTextTracks(assetId, filtered);
-    return NextResponse.json({ data: results, muxConfigured: isMuxConfigured });
+    const failed = results.filter((item) => item?.ok === false);
+    if (failed.length > 0) {
+      return NextResponse.json(
+        {
+          error: failed.map((f) => f.error || "Gagal menambahkan subtitle ke Mux.").join("; "),
+          data: results,
+          muxConfigured: isMuxConfigured,
+        },
+        { status: 502 }
+      );
+    }
+
+    // Opsi A (Full Mux Native): setelah track tersimpan di Mux, hapus file .vtt sementara di Storage.
+    if (isMuxConfigured) {
+      await Promise.allSettled(filtered.map((track) => deleteTempSubtitleFromStorage(track.url)));
+    }
+
+    return NextResponse.json({ data: results, muxConfigured: isMuxConfigured, storageCleaned: isMuxConfigured });
   } catch (error) {
     console.error("POST /api/mux/text-tracks", error);
     return NextResponse.json({ error: "Gagal menambahkan subtitle ke Mux." }, { status: 500 });

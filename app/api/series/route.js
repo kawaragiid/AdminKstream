@@ -57,6 +57,11 @@ export async function POST(request) {
       );
     }
 
+    const validation = validateSeriesPayload(payload);
+    if (!validation.valid) {
+      return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
+    }
+
     const created = await createSeries(payload, session);
 
     await recordAuditLog({

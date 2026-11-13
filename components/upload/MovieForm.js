@@ -347,22 +347,28 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
 
       let playbackId = result.data?.playback_ids?.[0]?.id ?? null;
       let assetId = result.data?.asset_id ?? null;
+      let assetReady = false;
       const startTime = Date.now();
       const pollTimeout = 120000;
       while (Date.now() - startTime < pollTimeout) {
-        if (playbackId && assetId) break;
+        if (playbackId && assetId && assetReady) break;
         try {
           const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
           const statusJson = await statusRes.json().catch(() => ({}));
           if (statusRes.ok) {
             playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
             assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+            const currentAssetStatus = statusJson?.data?.asset?.status ?? statusJson?.data?.status?.status;
+            if (currentAssetStatus === "ready") {
+              assetReady = true;
+            }
           } else {
             console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
           }
         } catch (pollErr) {
           console.warn("[MUX DEBUG] Upload status fetch failed", uploadId, pollErr?.message ?? pollErr);
         }
+        if (playbackId && assetId && assetReady) break;
         await muxWait(2000);
       }
 
@@ -383,6 +389,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             const imgJson = await imgRes.json();
             if (imgJson?.data?.url) {
               setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
+              setThumbnailFile(null);
             }
           }
         } catch (thumbErr) {
@@ -538,7 +545,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         body: JSON.stringify({ assetId: targetAssetId, tracks: validTracks }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const failedItems = Array.isArray(json?.data) ? json.data.filter((item) => item?.ok === false) : [];
+      if (!res.ok || failedItems.length > 0) {
         console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, res.status, json);
         return false;
       }
@@ -590,11 +598,43 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         return;
       }
 
+      const submissionData = { ...formData };
+
+      if (thumbnailFile) {
+        const fd = new FormData();
+        fd.append("file", thumbnailFile);
+        const imgRes = await fetch("/api/uploads/image", { method: "POST", body: fd });
+        const imgJson = await imgRes.json().catch(() => ({}));
+        if (!imgRes.ok) {
+          throw new Error(imgJson?.error ?? "Gagal mengunggah thumbnail.");
+        }
+        if (imgJson?.data?.url) {
+          submissionData.thumbnail = imgJson.data.url;
+          setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
+          setThumbnailFile(null);
+        }
+      }
+
+      const playbackForTrailer = submissionData.mux_playback_id || submissionData.mux_video_id;
+      const start = parseFloat(trailerStart);
+      const end = parseFloat(trailerEnd);
+      if (
+        playbackForTrailer &&
+        !Number.isNaN(start) &&
+        !Number.isNaN(end) &&
+        end > start &&
+        (!submissionData.trailer?.trim() || /\?start=.*&end=/.test(submissionData.trailer))
+      ) {
+        const trailerUrl = `https://stream.mux.com/${playbackForTrailer}.m3u8?start=${start}&end=${end}`;
+        submissionData.trailer = trailerUrl;
+        setFormData((prev) => ({ ...prev, trailer: trailerUrl }));
+      }
+
       // Simpan movie ke backend (create: /api/movies, update: /api/movies/:id)
       const response = await fetch(`/api/movies${initialData?.id ? `/${initialData.id}` : ""}`, {
         method: initialData?.id ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submissionData),
       });
       const result = await response.json();
       if (!response.ok) {
@@ -610,8 +650,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         setSubtitleSyncStatus("idle");
         setUploadProgress(0);
         setCurrentVideoFile(null);
+        setThumbnailFile(null);
+        setTrailerStart("");
+        setTrailerEnd("");
       }
-      onSuccess?.(result.data ?? formData);
+      onSuccess?.(result.data ?? submissionData);
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     } finally {
@@ -674,7 +717,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
           />
           <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-400">
             <label className="text-primary-200 hover:text-primary-100">
-              <input type="file" accept="image/*" onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)} disabled={!videoReady} className="hidden" />
+              <input type="file" accept="image/*" onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)} className="hidden" />
               <span className="cursor-pointer">Pilih file thumbnail</span>
             </label>
             {thumbnailFile && <span>{thumbnailFile.name}</span>}
@@ -767,8 +810,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={trailerStart}
             onChange={(e) => setTrailerStart(e.target.value)}
             placeholder="mis: 0"
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
           />
         </label>
         <label className="text-sm text-slate-300">
@@ -780,8 +822,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             value={trailerEnd}
             onChange={(e) => setTrailerEnd(e.target.value)}
             placeholder="mis: 10"
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
           />
         </label>
       </div>
@@ -895,8 +936,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               setErrors({});
               setMessage(null);
               setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-              setSubtitleUploadStatus((initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle");
-              setSubtitleSyncStatus("idle");
+              const hasInitialSubs = (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+              setSubtitleUploadStatus(hasInitialSubs ? "success" : "idle");
+              setSubtitleSyncStatus(hasInitialSubs ? "success" : "idle");
             }}
             className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
           >

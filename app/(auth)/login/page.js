@@ -12,5 +12,6 @@ export default async function LoginPage({ searchParams }) {
     redirect("/");
   }
 
-  return <LoginForm errorCode={searchParams?.error} />;
+  const resolvedParams = await searchParams;
+  return <LoginForm errorCode={resolvedParams?.error} />;
 }

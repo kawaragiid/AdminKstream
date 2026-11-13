@@ -33,11 +33,16 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
 
   const markAsRead = async (id) => {
     try {
-      await fetch("/api/notifications", {
+      const response = await fetch("/api/notifications", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error ?? "Gagal menandai notifikasi.");
+      }
+      setError(null);
       setNotifications((prev) =>
         prev.map((notif) =>
           notif.id === id
@@ -49,7 +54,7 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
         )
       );
     } catch (err) {
-      setError("Gagal menandai notifikasi.");
+      setError(err.message || "Gagal menandai notifikasi.");
     }
   };
 

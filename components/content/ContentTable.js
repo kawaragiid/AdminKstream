@@ -134,6 +134,10 @@ export default function ContentTable() {
       return;
     }
 
+    if (detailLoading) {
+      return;
+    }
+
     const candidate = selectedItem.mux_asset_id ?? selectedItem.mux_playback_id ?? selectedItem.mux_video_id ?? null;
 
     if (!candidate) {
@@ -187,7 +191,7 @@ export default function ContentTable() {
     return () => {
       cancelled = true;
     };
-  }, [selectedItem]);
+  }, [selectedItem, detailLoading]);
 
   return (
     <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
@@ -256,7 +260,7 @@ export default function ContentTable() {
                                   ))}
                                   {!items.length && !loading && (
                                     <tr>
-                                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
+                                      <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={5}>
                                         Tidak ada konten.
                                       </td>
                                     </tr>                )}

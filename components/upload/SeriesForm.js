@@ -148,6 +148,21 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
 
   useEffect(() => {
+    setFormData({ ...defaultSeries, ...initialData });
+    setErrors({});
+    setMessage(null);
+    setEditingEpisodeIndex(null);
+    setEpisodeDraft(newEpisodeDraft());
+    setUploadProgress(0);
+    setCurrentVideoFile(null);
+    setUploadStatus("idle");
+    setSubtitleUploadStatus("idle");
+    setSubtitleSyncStatus("idle");
+    setIsSyncingSubtitles(false);
+    lastFetchedPlaybackRef.current = null;
+  }, [initialData]);
+
+  useEffect(() => {
     const subtitleList = episodeDraft.subtitles ?? [];
     const hasValidSubtitle = subtitleList.some((item) => item?.url && /^https?:\/\//i.test(item.url));
     if (hasValidSubtitle) {
@@ -314,7 +329,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       });
 
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const failedItems = Array.isArray(json?.data) ? json.data.filter((item) => item?.ok === false) : [];
+      if (!res.ok || failedItems.length > 0) {
         console.warn("[MUX DEBUG] Subtitle sync failed", targetAssetId, json);
         return false;
       }
@@ -451,6 +467,28 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Gagal memulai upload episode.");
+
+      if (result.warning) {
+        const fallbackPlayback = result.data?.playback_ids?.[0]?.id ?? "";
+        if (fallbackPlayback) {
+          const mockEpisode = {
+            ...nextEpisode,
+            mux_playback_id: fallbackPlayback,
+            mux_video_id: fallbackPlayback,
+            mux_asset_id: result.data?.asset_id ?? nextEpisode.mux_asset_id ?? "mock-asset",
+          };
+          setEpisodeDraft(mockEpisode);
+          setUploadStatus("success");
+          setSubtitleSyncStatus("idle");
+        } else {
+          setUploadStatus("error");
+        }
+        setUploadProgress(0);
+        setCurrentVideoFile(null);
+        setMessage({ type: "info", text: "MUX belum dikonfigurasi. Playback ID mock digunakan." });
+        return;
+      }
+
       const uploadUrl = result.data?.url;
       const uploadId = result.data?.id;
       if (!uploadUrl) throw new Error("Tidak mendapatkan upload URL dari Mux.");
@@ -460,24 +498,51 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         setEpisodeDraft((prev) => ({ ...prev, mux_upload_id: uploadId }));
       }
 
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl);
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const percent = Math.round((e.loaded / e.total) * 100);
-            setUploadProgress(percent);
-          }
-        };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve(true) : reject(new Error("Upload gagal")));
-        xhr.onerror = () => reject(new Error("Network error"));
-        xhr.send(file);
-      });
+      let ok = false;
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", uploadUrl);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const percent = Math.round((e.loaded / e.total) * 100);
+              setUploadProgress(percent);
+            }
+          };
+          xhr.onload = () => {
+            setUploadProgress(100);
+            xhr.status >= 200 && xhr.status < 300 ? resolve(true) : reject(new Error("Upload gagal"));
+          };
+          xhr.onerror = () => reject(new Error("Network error"));
+          xhr.send(file);
+        });
+        ok = true;
+      } catch {}
+
+      if (!ok) {
+        try {
+          const postRes = await fetch(uploadUrl, { method: "POST", body: file });
+          ok = postRes.ok;
+        } catch {}
+      }
+
+      if (!ok) {
+        const proxyUrl = `/api/mux/proxy-upload?method=PUT&url=${encodeURIComponent(uploadUrl)}`;
+        setUploadProgress((prev) => (prev < 90 ? 90 : prev));
+        const proxyRes = await fetch(proxyUrl, { method: "POST", body: file });
+        ok = proxyRes.ok;
+        setUploadProgress(100);
+      }
+
+      if (!ok) {
+        throw new Error("Upload ke Mux gagal (CORS atau jaringan).");
+      }
 
       setUploadProgress(100);
 
       let playbackId = null;
       let assetId = null;
+      let assetReady = false;
       const startTime = Date.now();
       const pollTimeout = 120000;
 
@@ -488,9 +553,13 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           if (statusRes.ok) {
             playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
             assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+            const currentAssetStatus = statusJson?.data?.asset?.status ?? statusJson?.data?.status?.status;
+            if (currentAssetStatus === "ready") {
+              assetReady = true;
+            }
           }
         } catch {}
-        if (playbackId && assetId) break;
+        if (playbackId && assetId && assetReady) break;
         await muxWait(2000);
       }
 
@@ -629,11 +698,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           type: "success",
           text: isExistingEpisode ? "Episode berhasil diperbarui." : "Episode berhasil ditambahkan.",
         });
+        closeEpisodeEditor();
       } catch (err) {
         setMessage({ type: "error", text: err.message });
         return;
-      } finally {
-        closeEpisodeEditor();
       }
       return;
     }

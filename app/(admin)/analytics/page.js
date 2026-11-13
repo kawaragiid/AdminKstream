@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import AnalyticsChart from "@/components/analytics/AnalyticsChart";
 import AnalyticsTable from "@/components/analytics/AnalyticsTable";
 import ActiveUsersCard from "@/components/analytics/ActiveUsersCard";
@@ -10,6 +11,8 @@ import {
   fetchAudienceSplit,
   fetchAverageWatchDuration,
 } from "@/lib/analyticsService";
+import { getSessionUser } from "@/lib/session";
+import { ADMIN_ROLES } from "@/utils/constants";
 import { formatNumber, formatPercentage } from "@/utils/formatters";
 
 export const metadata = {
@@ -17,6 +20,14 @@ export const metadata = {
 };
 
 export default async function AnalyticsPage() {
+  const session = await getSessionUser();
+  if (!session) {
+    redirect("/login");
+  }
+  if (![ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN].includes(session.role)) {
+    redirect("/");
+  }
+
   const [summary, trending, activeUsers, audienceSplit, averageWatch] = await Promise.all([
     fetchAnalyticsSummary(),
     fetchTrendingSeries({ limit: 10 }),

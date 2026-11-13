@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createMovie, createSeries } from "@/lib/firestoreService";
 import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
 import { ADMIN_ROLES, FIRESTORE_COLLECTIONS } from "@/utils/constants";
+import { validateMoviePayload, validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 
@@ -20,13 +21,34 @@ export async function POST(request) {
       }
       const results = [];
       for (const record of payload.records) {
+        if (!record || typeof record !== "object") {
+          results.push({ title: "unknown", status: "failed", message: "Format item tidak valid." });
+          continue;
+        }
         try {
-          const created = record?.type === 'series'
-            ? await createSeries(record, session)
-            : await createMovie(record, session);
+          const normalizedRecord = {
+            ...record,
+            mux_playback_id: record.mux_playback_id ?? record.mux_video_id ?? record.mainPlaybackId ?? undefined,
+            thumbnail: record.thumbnail ?? record.thumbnailUrl ?? undefined,
+            trailer:
+              record.trailer ??
+              (record.trailerPlaybackId ? `https://stream.mux.com/${record.trailerPlaybackId}.m3u8` : undefined),
+          };
+          const validation =
+            normalizedRecord.type === "series"
+              ? validateSeriesPayload(normalizedRecord)
+              : validateMoviePayload(normalizedRecord);
+          if (!validation.valid) {
+            const firstError = Object.values(validation.errors)[0];
+            throw new Error(typeof firstError === "string" ? firstError : "Validasi metadata konten gagal.");
+          }
+
+          const created = normalizedRecord.type === "series"
+            ? await createSeries(normalizedRecord, session)
+            : await createMovie(normalizedRecord, session);
           results.push({ id: created.id, status: "success" });
         } catch (error) {
-          results.push({ title: record.title, status: "failed", message: error.message });
+          results.push({ title: record?.title ?? "unknown", status: "failed", message: error.message });
         }
       }
       await recordAuditLog({
@@ -54,23 +76,34 @@ export async function POST(request) {
       const allowed = new Set(
         Object.values(FIRESTORE_COLLECTIONS).filter((col) => col !== FIRESTORE_COLLECTIONS.ADMIN_USERS)
       );
-      const firestore = getFirestoreClient();
-      const summary = [];
+      const operations = [];
       for (const [col, docs] of Object.entries(collections)) {
         if (!allowed.has(col)) continue; // skip koleksi yang tidak dikenal atau sensitif (users)
         if (!Array.isArray(docs)) continue;
         for (const doc of docs) {
-          if (summary.length >= MAX_IMPORT_DOCS) {
-            return NextResponse.json(
-              { error: `Melebihi batas maksimum ${MAX_IMPORT_DOCS} dokumen per import.`, data: summary },
-              { status: 400 }
-            );
-          }
           const { id, ...data } = doc || {};
           if (!id || typeof id !== "string" || !data || typeof data !== "object") continue;
-          await firestore.collection(col).doc(id).set(data, { merge: Boolean(merge) });
-          summary.push({ col, id });
+          operations.push({ col, id, data });
         }
+      }
+
+      if (operations.length > MAX_IMPORT_DOCS) {
+        return NextResponse.json(
+          { error: `Melebihi batas maksimum ${MAX_IMPORT_DOCS} dokumen per import.`, data: [] },
+          { status: 400 }
+        );
+      }
+
+      const firestore = getFirestoreClient();
+      const batch = firestore.batch();
+      const summary = [];
+      for (const op of operations) {
+        const docRef = firestore.collection(op.col).doc(op.id);
+        batch.set(docRef, op.data, { merge: Boolean(merge) });
+        summary.push({ col: op.col, id: op.id });
+      }
+      if (operations.length > 0) {
+        await batch.commit();
       }
       await recordAuditLog({
         actor: session,

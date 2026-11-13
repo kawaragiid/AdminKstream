@@ -37,11 +37,16 @@ const UserTable = ({ initialUsers = [] }) => {
 
   const updateRole = async (uid, role, plan) => {
     try {
-      await fetch("/api/users", {
+      const response = await fetch("/api/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update-role", uid, role, plan }),
       });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json.error || "Gagal memperbarui role.");
+      }
+      setError(null);
       setUsers((prev) =>
         prev.map((user) =>
           user.uid === uid
@@ -54,29 +59,35 @@ const UserTable = ({ initialUsers = [] }) => {
         )
       );
     } catch (err) {
-      setError("Gagal memperbarui role.");
+      setError(err.message || "Gagal memperbarui role.");
     }
   };
 
   const toggleStatus = async (uid, disabled) => {
     try {
-      await fetch("/api/users", {
+      const response = await fetch("/api/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update-status", uid, disabled }),
       });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json.error || "Gagal memperbarui status pengguna.");
+      }
+      setError(null);
       setUsers((prev) =>
         prev.map((user) =>
           user.uid === uid
             ? {
                 ...user,
                 disabled,
+                status: disabled ? "suspend" : "active",
               }
             : user
         )
       );
     } catch (err) {
-      setError("Gagal memperbarui status pengguna.");
+      setError(err.message || "Gagal memperbarui status pengguna.");
     }
   };
 
@@ -92,6 +103,7 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(result.error ?? "Gagal menambahkan admin");
       }
+      setError(null);
       setUsers((prev) => [result.data, ...prev]);
       setShowCreate(false);
       setCreateForm({ email: "", password: "", displayName: "", role: ADMIN_ROLES.ADMIN });
@@ -102,34 +114,43 @@ const UserTable = ({ initialUsers = [] }) => {
 
   const extendSubscription = async (uid, days = 30) => {
     try {
-      const res = await fetch("/api/users", {
+      const response = await fetch("/api/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update-subscription", uid, extendDays: days }),
       });
-      const result = await res.json();
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json.error || "Gagal memperpanjang langganan.");
+      }
+      setError(null);
       setUsers((prev) =>
         prev.map((u) =>
           u.uid === uid
-            ? { ...u, isActive: true, expiresAt: result.expiresAt ?? u.expiresAt ?? null }
+            ? { ...u, isActive: true, expiresAt: json.expiresAt ?? u.expiresAt ?? null }
             : u
         )
       );
     } catch (err) {
-      setError("Gagal memperpanjang langganan.");
+      setError(err.message || "Gagal memperpanjang langganan.");
     }
   };
 
   const setSubscriptionActive = async (uid, isActive) => {
     try {
-      await fetch("/api/users", {
+      const response = await fetch("/api/users", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update-subscription", uid, isActive }),
       });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(json.error || "Gagal mengubah status langganan.");
+      }
+      setError(null);
       setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, isActive } : u)));
     } catch (err) {
-      setError("Gagal mengubah status langganan.");
+      setError(err.message || "Gagal mengubah status langganan.");
     }
   };
 
@@ -272,7 +293,7 @@ const UserTable = ({ initialUsers = [] }) => {
                                 ))}
                                 {!users.length && !loading && (
                                   <tr>
-                                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={4}>
+                                    <td className="px-4 py-6 text-center text-sm text-slate-500" colSpan={6}>
                                       Tidak ada pengguna.
                                     </td>
                                   </tr>              )}

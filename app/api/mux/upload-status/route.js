@@ -17,7 +17,7 @@ export async function GET(request) {
     let asset = null;
 
     if (status?.asset_id) {
-      asset = await getAsset(status.asset_id);
+      asset = await getAsset(status.asset_id).catch(() => null);
     }
 
     return NextResponse.json({ data: { status, asset } });

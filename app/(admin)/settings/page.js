@@ -1,11 +1,22 @@
+import { redirect } from "next/navigation";
 import SettingsForm from "@/components/settings/SettingsForm";
 import { fetchPlatformSettings } from "@/lib/settingsService";
+import { getSessionUser } from "@/lib/session";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 export const metadata = {
   title: "Pengaturan",
 };
 
 export default async function SettingsPage() {
+  const session = await getSessionUser();
+  if (!session) {
+    redirect("/login");
+  }
+  if (![ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN].includes(session.role)) {
+    redirect("/");
+  }
+
   const settings = await fetchPlatformSettings();
   return (
     <div className="space-y-6">

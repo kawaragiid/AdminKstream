@@ -84,6 +84,9 @@ export async function PATCH(request) {
       if (payload.plan && !VALID_PLANS.has(payload.plan)) {
         return NextResponse.json({ error: "Plan tidak valid." }, { status: 400 });
       }
+      if (payload.uid === session.uid && payload.role && payload.role !== session.role) {
+        return NextResponse.json({ error: "Tidak dapat mengubah role akun sendiri." }, { status: 400 });
+      }
       if (payload.role === ADMIN_ROLES.SUPER_ADMIN && session.role !== ADMIN_ROLES.SUPER_ADMIN) {
         return NextResponse.json({ error: "Hanya super-admin yang dapat menetapkan role super-admin." }, { status: 403 });
       }
@@ -101,6 +104,9 @@ export async function PATCH(request) {
     if (payload.action === "update-status") {
       if (typeof payload.disabled !== "boolean") {
         return NextResponse.json({ error: "Status disabled harus boolean." }, { status: 400 });
+      }
+      if (payload.uid === session.uid && payload.disabled) {
+        return NextResponse.json({ error: "Tidak dapat menangguhkan akun sendiri." }, { status: 400 });
       }
       await updateUserStatus(payload.uid, { disabled: payload.disabled, actorRole: session.role });
       await recordAuditLog({
@@ -132,6 +138,10 @@ export async function PATCH(request) {
     return NextResponse.json({ error: "Aksi tidak dikenal." }, { status: 400 });
   } catch (error) {
     console.error("PATCH /api/users", error);
-    return NextResponse.json({ error: "Gagal memperbarui pengguna." }, { status: 500 });
+    const statusCode = error?.statusCode || 500;
+    return NextResponse.json(
+      { error: statusCode !== 500 ? error.message : "Gagal memperbarui pengguna." },
+      { status: statusCode }
+    );
   }
 }

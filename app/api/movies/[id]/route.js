@@ -74,9 +74,20 @@ export async function DELETE(_request, { params }) {
 
   try {
     const { id } = await params;
+    const current = await getMovie(id);
+    if (!current) {
+      return NextResponse.json({ error: "Movie tidak ditemukan." }, { status: 404 });
+    }
     try {
-      const current = await getMovie(id);
-      const assetId = current?.mux_asset_id;
+      let assetId = current?.mux_asset_id ?? null;
+      if (!assetId && (current?.mux_playback_id || current?.mux_video_id)) {
+        const muxInfo = await normalizeMuxMetadata({
+          assetId: current?.mux_asset_id,
+          playbackId: current?.mux_playback_id,
+          videoId: current?.mux_video_id,
+        });
+        assetId = muxInfo.assetId;
+      }
       if (assetId && isMuxConfigured) {
         await deleteAsset(assetId);
       }

@@ -69,7 +69,7 @@ const SettingsForm = ({ initialSettings }) => {
             <span key={category} className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-1.5 text-xs text-slate-200">
               {category}
               <button type="button" onClick={() => removeCategory(category)} className="text-slate-500 hover:text-rose-300">
-                �
+                ×
               </button>
             </span>
           ))}

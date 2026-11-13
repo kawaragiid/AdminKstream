@@ -7,22 +7,19 @@ import { listUsers } from "@/lib/usersService";
 import { requireRole } from "@/lib/session";
 import { ADMIN_ROLES } from "@/utils/constants";
 
+function escapeCsvCell(value) {
+  if (value === null || value === undefined) return '""';
+  const raw = typeof value === "object" ? JSON.stringify(value) : String(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
 function toCsv(records) {
   if (!records?.length) return "";
   const headers = Object.keys(records[0]);
   const rows = records.map((record) =>
-    headers
-      .map((header) => {
-        const value = record[header];
-        if (value === null || value === undefined) return "";
-        if (typeof value === "object") {
-          return JSON.stringify(value).replace(/"/g, '""');
-        }
-        return String(value).replace(/"/g, '""');
-      })
-      .join(",")
+    headers.map((header) => escapeCsvCell(record[header])).join(",")
   );
-  return [headers.join(","), ...rows].join("\n");
+  return [headers.map(escapeCsvCell).join(","), ...rows].join("\n");
 }
 
 export async function GET(request) {

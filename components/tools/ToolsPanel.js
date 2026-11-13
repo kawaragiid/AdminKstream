@@ -5,11 +5,11 @@ import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
 
 const sampleRecord = JSON.stringify(
   {
-    title: "Judul",
-    description: "...",
-    thumbnailUrl: "https://...",
-    trailerPlaybackId: "",
-    mainPlaybackId: "",
+    title: "Judul Konten",
+    description: "Deskripsi singkat minimal 10 karakter.",
+    thumbnail: "https://...",
+    trailer: "https://...",
+    mux_playback_id: "playback_id_mux",
     category: "Action",
   },
   null,

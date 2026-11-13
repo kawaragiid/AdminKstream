@@ -32,12 +32,23 @@ export default function ProfileForm() {
   const [displayName, setDisplayName] = useState('');
   const [photoURL, setPhotoURL] = useState('');
   const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [message, setMessage] = useState(null);
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/users');
+        const res = await fetch('/api/users/me');
         const json = await res.json();
         if (res.ok && json?.data) {
           setDisplayName(json.data.displayName ?? '');
@@ -83,7 +94,7 @@ export default function ProfileForm() {
   return (
     <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
       <div className="flex items-center gap-4">
-        <img src={file ? URL.createObjectURL(file) : (photoURL || '/logo.png')} alt="avatar" className="h-16 w-16 rounded-full object-cover border border-slate-800" />
+        <img src={previewUrl || photoURL || '/logo.png'} alt="avatar" className="h-16 w-16 rounded-full object-cover border border-slate-800" />
         <div className="space-y-2 text-xs text-slate-400">
           <label className="cursor-pointer text-primary-200 hover:text-primary-100">
             <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />

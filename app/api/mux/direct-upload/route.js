@@ -13,7 +13,7 @@ export async function POST(request) {
   }
 
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const origin = request.headers.get("origin") || "*";
     const upload = await createDirectUpload({
       passthrough: JSON.stringify({

@@ -28,28 +28,28 @@ export default async function DashboardPage() {
 
   const stats = [
     {
-      icon: "???",
+      icon: "🎬",
       label: "Total Views",
       value: summary.totals.views,
       change: summary.growth.views,
       helper: `${formatNumber(summary.totals.views, { compact: true })} tayangan total`,
     },
     {
-      icon: "??",
+      icon: "⏱️",
       label: "Watch Time (menit)",
       value: summary.totals.watchTime,
       change: summary.growth.watchTime,
       helper: "Watch time akumulatif",
     },
     {
-      icon: "????????",
+      icon: "👥",
       label: "Subscribers",
       value: summary.totals.subscribers,
       change: summary.growth.subscribers,
       helper: "Subscriber terbaru 30 hari",
     },
     {
-      icon: "??",
+      icon: "💳",
       label: "Revenue (IDR)",
       value: summary.totals.revenue,
       change: summary.growth.revenue,

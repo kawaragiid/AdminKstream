@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { fetchAnalyticsSummary } from "@/lib/analyticsService";
 import { requireRole } from "@/lib/session";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function GET() {
-  const { error: authError } = await requireRole();
+  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 
   try {

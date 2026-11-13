@@ -1,10 +1,12 @@
 ﻿import { CONTENT_CATEGORIES, CONTENT_TYPES } from "./constants";
 
 export function ensureHttps(url) {
-  if (!url) return url;
-  if (url.startsWith("https://")) return url;
-  if (url.startsWith("http://")) return url.replace("http://", "https://");
-  return `https://${url}`;
+  if (url === null || url === undefined) return null;
+  const trimmed = String(url).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("https://") || trimmed.startsWith("/") || trimmed.startsWith("data:")) return trimmed;
+  if (trimmed.startsWith("http://")) return trimmed.replace("http://", "https://");
+  return `https://${trimmed}`;
 }
 
 export function sanitizeTagsList(rawTags = []) {
@@ -118,9 +120,9 @@ export function validateSeriesPayload(payload) {
     errors.category = "Kategori tidak valid.";
   }
 
-  if (!Array.isArray(payload.episodes) || !payload.episodes.length) {
-    errors.episodes = "Series wajib memiliki minimal 1 episode.";
-  } else {
+  if (payload.episodes !== undefined && !Array.isArray(payload.episodes)) {
+    errors.episodes = "Daftar episode harus berupa array.";
+  } else if (Array.isArray(payload.episodes) && payload.episodes.length > 0) {
     const episodeErrors = payload.episodes
       .map((episode, index) => validateEpisodePayload(episode, index))
       .filter(Boolean);

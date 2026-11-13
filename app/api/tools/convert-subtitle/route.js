@@ -14,7 +14,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Konten subtitle wajib diisi." }, { status: 400 });
     }
 
-    if (mimeType && mimeType !== "application/x-subrip") {
+    const isAlreadyVtt = content.trimStart().startsWith("WEBVTT") || mimeType === "text/vtt";
+    if (isAlreadyVtt) {
       return NextResponse.json({ data: content, converted: false });
     }
 

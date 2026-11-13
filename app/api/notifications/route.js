@@ -26,6 +26,9 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    if (!payload?.title?.trim() || !payload?.body?.trim()) {
+      return NextResponse.json({ error: "Judul dan isi notifikasi wajib diisi." }, { status: 400 });
+    }
     const notification = await createNotification(payload);
     return NextResponse.json({ data: notification }, { status: 201 });
   } catch (error) {
