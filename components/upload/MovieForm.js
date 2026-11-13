@@ -253,7 +253,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const response = await fetch("/api/mux/direct-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "movie" }),
+        body: JSON.stringify({
+          type: "movie",
+          title: formData.title?.trim() || undefined,
+          externalId: initialData?.id || undefined,
+        }),
       });
       const result = await response.json();
       if (!response.ok) {

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSeries, addEpisode } from "@/lib/firestoreService";
-import { normalizeMuxMetadata } from "@/lib/muxService";
+import { normalizeMuxMetadata, syncEpisodeMuxMetadata } from "@/lib/muxService";
 import { validateEpisode } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -40,6 +40,9 @@ export async function POST(request, { params }) {
     payload.mux_asset_id = muxInfo.assetId;
     payload.mux_playback_id = muxInfo.playbackId;
     payload.mux_video_id = muxInfo.videoId;
+    if (!payload.duration && muxInfo.duration) {
+      payload.duration = muxInfo.duration;
+    }
 
     const { valid, errors } = validateEpisode(payload);
 
@@ -48,7 +51,15 @@ export async function POST(request, { params }) {
     }
 
     const { id } = await params;
+    const series = await getSeries(id);
     const episode = await addEpisode(id, payload);
+
+    await syncEpisodeMuxMetadata({
+      seriesId: id,
+      seriesTitle: series?.title,
+      episode,
+      creatorId: session.uid,
+    }).catch((err) => console.warn("Gagal sinkronisasi metadata Mux episode:", err?.message));
 
     await recordAuditLog({
       actor: session,

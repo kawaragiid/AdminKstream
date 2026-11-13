@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMovie, updateMovie, deleteMovie } from "@/lib/firestoreService";
-import { deleteAsset, isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
+import { deleteAsset, isMuxConfigured, normalizeMuxMetadata, updateAssetMetadata } from "@/lib/muxService";
 import { validateMoviePayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -44,6 +44,9 @@ export async function PUT(request, { params }) {
     merged.mux_asset_id = muxInfo.assetId;
     merged.mux_playback_id = muxInfo.playbackId;
     merged.mux_video_id = muxInfo.videoId;
+    if (!merged.duration && muxInfo.duration) {
+      merged.duration = muxInfo.duration;
+    }
     const { valid, errors } = validateMoviePayload(merged);
 
     if (!valid) {
@@ -52,6 +55,15 @@ export async function PUT(request, { params }) {
 
     const { id: _omit, ...data } = merged;
     const updated = await updateMovie(id, data);
+
+    if (merged.mux_asset_id) {
+      await updateAssetMetadata(merged.mux_asset_id, {
+        title: merged.title,
+        externalId: id,
+        creatorId: session.uid,
+        passthrough: JSON.stringify({ type: "movie", id, title: String(merged.title || "").slice(0, 100) }),
+      }).catch((err) => console.warn("Gagal sinkronisasi metadata Mux movie:", err?.message));
+    }
 
     await recordAuditLog({
       actor: session,

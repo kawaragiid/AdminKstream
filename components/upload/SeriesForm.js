@@ -9,7 +9,17 @@ const defaultSeries = {
   description: "",
   category: CONTENT_CATEGORIES[0],
   thumbnail: "",
+  backdropUrl: "",
   trailer: "",
+  releaseYear: "",
+  maturityRating: "13+",
+  status: "Ongoing",
+  totalSeasons: 1,
+  genres: [],
+  cast: [],
+  director: "",
+  country: "",
+  language: "",
   subtitles: [],
   episodes: [],
   tags: [],
@@ -17,9 +27,11 @@ const defaultSeries = {
 
 const newEpisodeDraft = (index = 0) => ({
   episodeId: undefined,
+  seasonNumber: 1,
   epNumber: index + 1,
   title: "",
   description: "",
+  duration: "",
   mux_playback_id: "",
   mux_asset_id: "",
   mux_video_id: "",
@@ -465,7 +477,13 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       const response = await fetch("/api/mux/direct-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "episode" }),
+        body: JSON.stringify({
+          type: "episode",
+          title: [formData.title?.trim(), episodeDraft.title?.trim()].filter(Boolean).join(" - ") || undefined,
+          seasonNumber: Number(episodeDraft.seasonNumber || 1),
+          epNumber: Number(episodeDraft.epNumber || 1),
+          externalId: initialData?.id || undefined,
+        }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Gagal memulai upload episode.");
@@ -819,10 +837,26 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     try {
       const payload = {
         ...formData,
+        releaseYear: formData.releaseYear ? Number(formData.releaseYear) : null,
+        totalSeasons: formData.totalSeasons ? Number(formData.totalSeasons) : 1,
+        genres: Array.isArray(formData.genres)
+          ? formData.genres
+          : String(formData.genres || "")
+              .split(",")
+              .map((g) => g.trim())
+              .filter(Boolean),
+        cast: Array.isArray(formData.cast)
+          ? formData.cast
+          : String(formData.cast || "")
+              .split(",")
+              .map((c) => c.trim())
+              .filter(Boolean),
         episodes: (formData.episodes ?? []).map((episode, index) => ({
           ...episode,
           episodeId: episode.episodeId ?? uid(),
+          seasonNumber: Number(episode.seasonNumber ?? 1),
           epNumber: Number(episode.epNumber ?? index + 1),
+          duration: episode.duration ? Number(episode.duration) : null,
         })),
       };
 
@@ -892,15 +926,132 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           />
         </label>
 
-        <label className="text-sm text-slate-300">
-          Thumbnail Series
-          <input
-            value={formData.thumbnail ?? ""}
-            onChange={(e) => setFormData((prev) => ({ ...prev, thumbnail: e.target.value }))}
-            placeholder="https://..."
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
-          />
-        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="text-sm text-slate-300">
+            Thumbnail / Poster Series
+            <input
+              value={formData.thumbnail ?? ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, thumbnail: e.target.value }))}
+              placeholder="https://..."
+              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            />
+          </label>
+          <label className="text-sm text-slate-300">
+            Backdrop Hero URL (opsional)
+            <input
+              value={formData.backdropUrl ?? ""}
+              onChange={(e) => setFormData((prev) => ({ ...prev, backdropUrl: e.target.value }))}
+              placeholder="https://... (landscape 16:9)"
+              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            />
+          </label>
+        </div>
+
+        {/* DETAIL METADATA ALA NETFLIX */}
+        <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/40 p-5">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-100">Detail Series (Netflix-Style)</h3>
+            <p className="text-xs text-slate-500">Informasi lengkap untuk halaman detail series.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-4">
+            <label className="text-xs text-slate-300">
+              Tahun Rilis
+              <input
+                type="number"
+                min={1900}
+                max={2100}
+                value={formData.releaseYear ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, releaseYear: e.target.value }))}
+                placeholder="2024"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+            <label className="text-xs text-slate-300">
+              Rating Usia
+              <select
+                value={formData.maturityRating ?? "13+"}
+                onChange={(e) => setFormData((prev) => ({ ...prev, maturityRating: e.target.value }))}
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              >
+                <option value="SU">SU (Semua Umur)</option>
+                <option value="13+">13+</option>
+                <option value="16+">16+</option>
+                <option value="18+">18+</option>
+              </select>
+            </label>
+            <label className="text-xs text-slate-300">
+              Status Series
+              <select
+                value={formData.status ?? "Ongoing"}
+                onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              >
+                <option value="Ongoing">Ongoing</option>
+                <option value="Completed">Completed</option>
+                <option value="Upcoming">Upcoming</option>
+              </select>
+            </label>
+            <label className="text-xs text-slate-300">
+              Total Season
+              <input
+                type="number"
+                min={1}
+                value={formData.totalSeasons ?? 1}
+                onChange={(e) => setFormData((prev) => ({ ...prev, totalSeasons: e.target.value }))}
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="text-xs text-slate-300">
+              Genre (pisahkan dengan koma)
+              <input
+                value={Array.isArray(formData.genres) ? formData.genres.join(", ") : formData.genres ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, genres: e.target.value }))}
+                placeholder="Drama, Slice of Life, Culinary"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+            <label className="text-xs text-slate-300">
+              Pemeran / Cast (pisahkan dengan koma)
+              <input
+                value={Array.isArray(formData.cast) ? formData.cast.join(", ") : formData.cast ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, cast: e.target.value }))}
+                placeholder="Actor A, Actor B"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="text-xs text-slate-300">
+              Sutradara / Kreator
+              <input
+                value={formData.director ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, director: e.target.value }))}
+                placeholder="Nama sutradara"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+            <label className="text-xs text-slate-300">
+              Negara Asal
+              <input
+                value={formData.country ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, country: e.target.value }))}
+                placeholder="Jepang / Indonesia"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+            <label className="text-xs text-slate-300">
+              Bahasa Utama
+              <input
+                value={formData.language ?? ""}
+                onChange={(e) => setFormData((prev) => ({ ...prev, language: e.target.value }))}
+                placeholder="Jepang / Indonesia"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-200"
+              />
+            </label>
+          </div>
+        </div>
 
         {/* DAFTAR EPISODE */}
         <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
@@ -920,7 +1071,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-semibold text-slate-100">
-                      Ep {episode.epNumber} — {episode.title}
+                      S{String(episode.seasonNumber ?? 1).padStart(2, "0")}E{String(episode.epNumber ?? 0).padStart(2, "0")} — {episode.title}
                     </p>
                     <p className="text-xs text-slate-500 line-clamp-2">{episode.description}</p>
                   </div>
@@ -985,7 +1136,22 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           <h4 className="text-sm font-semibold text-slate-100">{episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode"}</h4>
 
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-4">
+              <label className="text-sm text-slate-300">
+                Season
+                <input
+                  type="number"
+                  min={1}
+                  value={episodeDraft.seasonNumber ?? 1}
+                  onChange={(e) =>
+                    setEpisodeDraft((prev) => ({
+                      ...prev,
+                      seasonNumber: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+                />
+              </label>
               <label className="text-sm text-slate-300">
                 Nomor Episode
                 <input
@@ -998,6 +1164,22 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                       epNumber: Number(e.target.value),
                     }))
                   }
+                  className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+                />
+              </label>
+              <label className="text-sm text-slate-300">
+                Durasi (detik)
+                <input
+                  type="number"
+                  min={0}
+                  value={episodeDraft.duration ?? ""}
+                  onChange={(e) =>
+                    setEpisodeDraft((prev) => ({
+                      ...prev,
+                      duration: e.target.value ? Number(e.target.value) : "",
+                    }))
+                  }
+                  placeholder="Otomatis dari Mux"
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
                 />
               </label>

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSeries, updateSeries, deleteSeries } from "@/lib/firestoreService";
-import { deleteAsset, isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
+import { deleteAsset, isMuxConfigured, normalizeMuxMetadata, syncEpisodeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -66,6 +66,7 @@ export async function PUT(request, { params }) {
             ...episode,
             episodeId: episode?.episodeId ?? matchedExisting?.episodeId,
             createdAt: episode?.createdAt ?? matchedExisting?.createdAt,
+            duration: episode?.duration || matchedExisting?.duration || episodeMux.duration || null,
             mux_asset_id: episodeMux.assetId,
             mux_playback_id: episodeMux.playbackId,
             mux_video_id: episodeMux.videoId,
@@ -81,6 +82,20 @@ export async function PUT(request, { params }) {
 
     const { id: _omit, ...data } = merged;
     const updated = await updateSeries(id, data);
+
+    const syncedEpisodes = Array.isArray(updated.episodes) ? updated.episodes : merged.episodes;
+    if (Array.isArray(syncedEpisodes)) {
+      await Promise.allSettled(
+        syncedEpisodes.map((episode) =>
+          syncEpisodeMuxMetadata({
+            seriesId: id,
+            seriesTitle: updated.title ?? merged.title,
+            episode,
+            creatorId: session.uid,
+          })
+        )
+      );
+    }
 
     await recordAuditLog({
       actor: session,

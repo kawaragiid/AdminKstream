@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listSeries, createSeries } from "@/lib/firestoreService";
-import { normalizeMuxMetadata } from "@/lib/muxService";
+import { normalizeMuxMetadata, syncEpisodeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -49,6 +49,7 @@ export async function POST(request) {
           });
           return {
             ...episode,
+            duration: episode?.duration || episodeMux.duration || null,
             mux_asset_id: episodeMux.assetId,
             mux_playback_id: episodeMux.playbackId,
             mux_video_id: episodeMux.videoId,
@@ -63,6 +64,19 @@ export async function POST(request) {
     }
 
     const created = await createSeries(payload, session);
+
+    if (Array.isArray(created.episodes)) {
+      await Promise.allSettled(
+        created.episodes.map((episode) =>
+          syncEpisodeMuxMetadata({
+            seriesId: created.id,
+            seriesTitle: created.title,
+            episode,
+            creatorId: session.uid,
+          })
+        )
+      );
+    }
 
     await recordAuditLog({
       actor: session,
