@@ -31,6 +31,8 @@ const newEpisodeDraft = (index = 0) => ({
 });
 
 const emptySubtitle = { lang: "en", label: "English", url: "" };
+const isValidSubtitleEntry = (item) =>
+  Boolean(item && (item.source === "mux" || item.muxTrackId || (item.url && /^https?:\/\//i.test(item.url))));
 
 function uid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -164,7 +166,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
 
   useEffect(() => {
     const subtitleList = episodeDraft.subtitles ?? [];
-    const hasValidSubtitle = subtitleList.some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    const hasValidSubtitle = subtitleList.some(isValidSubtitleEntry);
     if (hasValidSubtitle) {
       setSubtitleUploadStatus((prev) => (prev === "success" ? prev : "success"));
     } else if (!subtitleList.length) {
@@ -716,8 +718,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   };
 
   const subtitleEntries = episodeDraft.subtitles ?? [];
-  const hasSubtitleUrl = subtitleEntries.some((item) => item?.url && /^https?:\/\//i.test(item.url));
-  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang);
+  const hasSubtitleUrl = subtitleEntries.some(isValidSubtitleEntry);
+  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang || item?.source === "mux" || item?.muxTrackId);
   const canSyncSubtitles =
     hasSubtitleUrl && Boolean(episodeDraft.mux_asset_id || episodeDraft.mux_video_id || episodeDraft.mux_playback_id);
   const hasMuxPlayback = Boolean(episodeDraft.mux_playback_id ?? episodeDraft.mux_video_id);
@@ -747,7 +749,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     setEditingEpisodeIndex(index);
     setCurrentVideoFile(null);
     const hasPlayback = Boolean(selected?.mux_playback_id ?? selected?.mux_video_id);
-    const hasValidSubtitles = (selected?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    const hasValidSubtitles = (selected?.subtitles ?? []).some(isValidSubtitleEntry);
     setUploadStatus(hasPlayback ? "success" : "idle");
     setSubtitleUploadStatus(hasValidSubtitles ? "success" : "idle");
     setSubtitleSyncStatus("idle");

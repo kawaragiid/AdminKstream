@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/session";
-import { uploadBufferToStorage } from "@/lib/storage";
+import { purgeExpiredTempSubtitles, resolvePublicBaseUrl, saveTempSubtitle } from "@/lib/tempSubtitles";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
-const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB (file mentah)
 const ALLOWED_SUBTITLE_MIME = new Set(["text/vtt", "text/plain", "application/x-subrip", "application/octet-stream", ""]);
 
 function sanitizeSubtitleName(rawName) {
   return String(rawName || `subtitle-${Date.now()}.vtt`).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+// Upload subtitle TANPA Firebase Storage: teks VTT disimpan sementara di Firestore,
+// lalu disajikan via URL publik bertoken agar bisa diambil Mux (lihat lib/tempSubtitles.js).
 export async function POST(request) {
   const { session, error: authError } = await requireRole();
   if (authError) return authError;
@@ -36,32 +38,20 @@ export async function POST(request) {
       return NextResponse.json({ error: "Ukuran file subtitle maksimal 5 MB." }, { status: 400 });
     }
 
-    const isSrt = /\.srt$/i.test(origName) || fileType === "application/x-subrip";
-    let buffer;
-    let outName;
-    const contentType = "text/vtt";
+    const rawText = rawBuffer.toString("utf-8").replace(/^\uFEFF/, "");
+    const isVtt = /^WEBVTT/i.test(rawText.trimStart());
+    const vtt = isVtt ? rawText : convertSrtToVtt(rawText);
+    const outName = origName.replace(/\.(srt|txt|vtt)$/i, "") + ".vtt";
 
-    if (isSrt) {
-      const vtt = convertSrtToVtt(rawBuffer.toString("utf-8"));
-      buffer = Buffer.from(vtt, "utf-8");
-      outName = origName.replace(/\.srt$/i, ".vtt");
-    } else if (fileType === "text/vtt" || /\.vtt$/i.test(origName)) {
-      buffer = rawBuffer;
-      outName = origName;
-    } else {
-      const vtt = convertSrtToVtt(rawBuffer.toString("utf-8"));
-      buffer = Buffer.from(vtt, "utf-8");
-      outName = origName.replace(/\.[^/.]+$/, ".vtt");
-    }
-
-    const key = `subtitles/${session.uid}/${Date.now()}-${outName}`;
-    const url = await uploadBufferToStorage({ buffer, destination: key, contentType });
+    purgeExpiredTempSubtitles().catch(() => {});
+    const token = await saveTempSubtitle({ vtt, lang, label, name: outName, uid: session.uid });
+    const url = `${resolvePublicBaseUrl(request)}/api/public/subtitles/${token}.vtt`;
 
     return NextResponse.json({
-      data: { url, lang, label, name: outName },
+      data: { url, lang, label, name: outName, temporary: true },
     });
   } catch (error) {
     console.error("POST /api/uploads/subtitle", error);
-    return NextResponse.json({ error: "Gagal mengunggah subtitle." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Gagal mengunggah subtitle." }, { status: 500 });
   }
 }

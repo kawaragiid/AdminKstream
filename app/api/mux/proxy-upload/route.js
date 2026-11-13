@@ -12,8 +12,6 @@ function isAllowedUploadUrl(url) {
     return (
       host === "mux.com" ||
       host.endsWith(".mux.com") ||
-      host === "storage.googleapis.com" ||
-      host.endsWith(".storage.googleapis.com") ||
       host.endsWith(".s3.amazonaws.com") ||
       host.endsWith(".s3-accelerate.amazonaws.com")
     );

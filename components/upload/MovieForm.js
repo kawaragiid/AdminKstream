@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CONTENT_CATEGORIES, SUBTITLE_LANGUAGES } from "@/utils/constants";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
+const isValidSubtitleEntry = (item) =>
+  Boolean(item && (item.source === "mux" || item.muxTrackId || (item.url && /^https?:\/\//i.test(item.url))));
+
 const defaultMovie = {
   title: "",
   description: "",
@@ -26,13 +29,12 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [trailerStart, setTrailerStart] = useState("");
   const [trailerEnd, setTrailerEnd] = useState("");
-  const [thumbnailFile, setThumbnailFile] = useState(null);
   const [currentVideoFile, setCurrentVideoFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadMode, setUploadMode] = useState("upload");
   const [uploadStatus, setUploadStatus] = useState(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState((initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url)) ? "success" : "idle");
-  const [subtitleSyncStatus, setSubtitleSyncStatus] = useState("idle");
+  const [subtitleUploadStatus, setSubtitleUploadStatus] = useState((initialData?.subtitles ?? []).some(isValidSubtitleEntry) ? "success" : "idle");
+  const [subtitleSyncStatus, setSubtitleSyncStatus] = useState((initialData?.subtitles ?? []).some(isValidSubtitleEntry) ? "success" : "idle");
   const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
 
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
@@ -41,16 +43,15 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   useEffect(() => {
     setFormData({ ...defaultMovie, ...initialData });
     setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-    const hasInitialSubtitles = (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    const hasInitialSubtitles = (initialData?.subtitles ?? []).some(isValidSubtitleEntry);
     setSubtitleUploadStatus(hasInitialSubtitles ? "success" : "idle");
     setSubtitleSyncStatus(hasInitialSubtitles ? "success" : "idle");
     setCurrentVideoFile(null);
     setUploadProgress(0);
-    setThumbnailFile(null);
     setIsSyncingSubtitles(false);
   }, [initialData]);
   useEffect(() => {
-    const hasValidSubtitle = (formData.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+    const hasValidSubtitle = (formData.subtitles ?? []).some(isValidSubtitleEntry);
     if (hasValidSubtitle) {
       setSubtitleUploadStatus((prev) => (prev === "success" ? prev : "success"));
     } else if (!(formData.subtitles ?? []).length) {
@@ -200,8 +201,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   };
 
   const subtitleEntries = formData.subtitles ?? [];
-  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang);
-  const hasValidSubtitleUrl = subtitleEntries.some((item) => item?.url && /^https?:\/\//i.test(item.url));
+  const subtitlesConfigured = subtitleEntries.some((item) => item?.url || item?.label || item?.lang || item?.source === "mux" || item?.muxTrackId);
+  const hasValidSubtitleUrl = subtitleEntries.some(isValidSubtitleEntry);
   const videoReady = uploadStatus === "success" || Boolean(formData.mux_playback_id ?? formData.mux_video_id);
   const subtitlesUploadReady = !subtitlesConfigured || (hasValidSubtitleUrl && subtitleUploadStatus === "success");
   const subtitlesSyncReady = !subtitlesConfigured || subtitleSyncStatus === "success";
@@ -380,22 +381,10 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         throw new Error("Gagal mendapatkan playbackId / assetId dari Mux.");
       }
 
-      if (thumbnailFile) {
-        try {
-          const fd = new FormData();
-          fd.append("file", thumbnailFile);
-          const imgRes = await fetch("/api/uploads/image", { method: "POST", body: fd });
-          if (imgRes.ok) {
-            const imgJson = await imgRes.json();
-            if (imgJson?.data?.url) {
-              setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
-              setThumbnailFile(null);
-            }
-          }
-        } catch (thumbErr) {
-          console.warn("[MUX DEBUG] Thumbnail upload failed", thumbErr?.message ?? thumbErr);
-        }
-      }
+      setFormData((prev) => ({
+        ...prev,
+        thumbnail: prev.thumbnail?.trim() ? prev.thumbnail : `https://image.mux.com/${playbackId}/thumbnail.jpg?time=5`,
+      }));
 
       setFormData((prev) => ({
         ...prev,
@@ -600,19 +589,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
 
       const submissionData = { ...formData };
 
-      if (thumbnailFile) {
-        const fd = new FormData();
-        fd.append("file", thumbnailFile);
-        const imgRes = await fetch("/api/uploads/image", { method: "POST", body: fd });
-        const imgJson = await imgRes.json().catch(() => ({}));
-        if (!imgRes.ok) {
-          throw new Error(imgJson?.error ?? "Gagal mengunggah thumbnail.");
-        }
-        if (imgJson?.data?.url) {
-          submissionData.thumbnail = imgJson.data.url;
-          setFormData((prev) => ({ ...prev, thumbnail: imgJson.data.url }));
-          setThumbnailFile(null);
-        }
+      const playbackForThumb = submissionData.mux_playback_id || submissionData.mux_video_id;
+      if (!submissionData.thumbnail?.trim() && playbackForThumb) {
+        submissionData.thumbnail = `https://image.mux.com/${playbackForThumb}/thumbnail.jpg?time=5`;
       }
 
       const playbackForTrailer = submissionData.mux_playback_id || submissionData.mux_video_id;
@@ -650,7 +629,6 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         setSubtitleSyncStatus("idle");
         setUploadProgress(0);
         setCurrentVideoFile(null);
-        setThumbnailFile(null);
         setTrailerStart("");
         setTrailerEnd("");
       }
@@ -715,12 +693,19 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
             disabled={!videoReady}
             className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
           />
-          <span className="mt-2 inline-flex items-center gap-2 text-xs text-slate-400">
-            <label className="text-primary-200 hover:text-primary-100">
-              <input type="file" accept="image/*" onChange={(e) => setThumbnailFile(e.target.files?.[0] ?? null)} className="hidden" />
-              <span className="cursor-pointer">Pilih file thumbnail</span>
-            </label>
-            {thumbnailFile && <span>{thumbnailFile.name}</span>}
+          <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <button
+              type="button"
+              disabled={!(formData.mux_playback_id || formData.mux_video_id)}
+              onClick={() => {
+                const pid = formData.mux_playback_id || formData.mux_video_id;
+                if (pid) setFormData((prev) => ({ ...prev, thumbnail: `https://image.mux.com/${pid}/thumbnail.jpg?time=5` }));
+              }}
+              className="text-primary-200 hover:text-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Pakai thumbnail dari video (Mux)
+            </button>
+            <span>· Kosongkan = otomatis dari Mux</span>
           </span>
         </label>
         <label className="text-sm text-slate-300">
@@ -936,7 +921,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
               setErrors({});
               setMessage(null);
               setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-              const hasInitialSubs = (initialData?.subtitles ?? []).some((item) => item?.url && /^https?:\/\//i.test(item.url));
+              const hasInitialSubs = (initialData?.subtitles ?? []).some(isValidSubtitleEntry);
               setSubtitleUploadStatus(hasInitialSubs ? "success" : "idle");
               setSubtitleSyncStatus(hasInitialSubs ? "success" : "idle");
             }}
