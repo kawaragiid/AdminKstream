@@ -46,7 +46,9 @@ export default function ContentTable() {
     }
     const seasons = Array.from(seasonSet).sort((a, b) => a - b);
     for (const s of seasons) {
-      episodesBySeason[s].sort((a, b) => Number(a.epNumber ?? 0) - Number(b.epNumber ?? 0));
+      episodesBySeason[s].sort(
+        (a, b) => Number(a.epNumber ?? a.episodeNumber ?? 0) - Number(b.epNumber ?? b.episodeNumber ?? 0)
+      );
     }
     const maxSeason = seasons[seasons.length - 1] ?? 1;
     return { seasons, maxSeason, episodesBySeason };
@@ -71,7 +73,7 @@ export default function ContentTable() {
 
   const getMuxStatusBadge = (item) => {
     if (item.type === CONTENT_TYPES.MOVIE) {
-      const hasPlayback = Boolean(item.mux_playback_id || item.mux_video_id);
+      const hasPlayback = Boolean(item.mux_playback_id || item.muxPlaybackId || item.mux_video_id);
       return hasPlayback
         ? { label: "Mux Ready", cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" }
         : { label: "Tanpa Asset", cls: "border-amber-500/30 bg-amber-500/10 text-amber-300" };
@@ -80,7 +82,7 @@ export default function ContentTable() {
     if (!eps.length) {
       return { label: "0 Episode", cls: "border-slate-700 bg-slate-800/70 text-slate-400" };
     }
-    const readyCount = eps.filter((ep) => ep?.mux_playback_id || ep?.mux_video_id).length;
+    const readyCount = eps.filter((ep) => ep?.mux_playback_id || ep?.muxPlaybackId || ep?.mux_video_id).length;
     if (readyCount === eps.length) {
       return { label: `${eps.length} Ep Ready`, cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" };
     }
@@ -678,30 +680,34 @@ export default function ContentTable() {
                     </div>
 
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1 text-xs">
-                      {(seriesSeasonData.episodesBySeason[activeSeason] ?? []).map((episode) => (
-                        <div
-                          key={episode.episodeId ?? `${activeSeason}-${episode.epNumber}`}
-                          className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 space-y-1"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-semibold text-slate-100">
-                              S{String(episode.seasonNumber ?? 1).padStart(2, "0")}E{String(episode.epNumber ?? 0).padStart(2, "0")} — {episode.title}
+                      {(seriesSeasonData.episodesBySeason[activeSeason] ?? []).map((episode) => {
+                        const epNo = episode.epNumber ?? episode.episodeNumber ?? 0;
+                        const epPlayback = episode.mux_playback_id || episode.muxPlaybackId || episode.mux_video_id;
+                        return (
+                          <div
+                            key={episode.episodeId ?? episode.id ?? `${activeSeason}-${epNo}`}
+                            className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="font-semibold text-slate-100">
+                                S{String(episode.seasonNumber ?? 1).padStart(2, "0")}E{String(epNo).padStart(2, "0")} — {episode.title}
+                              </p>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                  epPlayback
+                                    ? "bg-emerald-500/15 text-emerald-300"
+                                    : "bg-amber-500/15 text-amber-300"
+                                }`}
+                              >
+                                {epPlayback ? "Ready" : "Belum Tersedia"}
+                              </span>
+                            </div>
+                            <p className="break-all text-[11px] text-slate-400">
+                              Playback ID: {epPlayback || "-"}
                             </p>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                episode.mux_playback_id || episode.mux_video_id
-                                  ? "bg-emerald-500/15 text-emerald-300"
-                                  : "bg-amber-500/15 text-amber-300"
-                              }`}
-                            >
-                              {episode.mux_playback_id || episode.mux_video_id ? "Ready" : "No Asset"}
-                            </span>
                           </div>
-                          <p className="break-all text-[11px] text-slate-400">
-                            Playback ID: {episode.mux_playback_id ?? episode.mux_video_id ?? "-"}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {!(seriesSeasonData.episodesBySeason[activeSeason] ?? []).length && (
                         <div className="rounded-xl border border-dashed border-slate-800 p-4 text-center text-slate-500">
                           <p>Belum ada episode di Season {activeSeason}.</p>
