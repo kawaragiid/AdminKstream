@@ -29,8 +29,11 @@ export default function LoginForm({ errorCode }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState(null);
+  const isBusy = emailLoading || googleLoading;
 
   useEffect(() => {
     if (errorCode && STATUS_MESSAGE[errorCode]) {
@@ -41,12 +44,17 @@ export default function LoginForm({ errorCode }) {
   const handleLogin = async (event) => {
     event.preventDefault();
     setError(null);
-    setLoading(true);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Email wajib diisi.");
+      return;
+    }
+    setEmailLoading(true);
 
     try {
       const auth = getFirebaseAuth();
       await setPersistence(auth, browserLocalPersistence);
-      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const credential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
       const idToken = await credential.user.getIdToken();
 
       const response = await fetch("/api/auth/session", {
@@ -67,13 +75,13 @@ export default function LoginForm({ errorCode }) {
       const message = errorMessages[err.code] || err.message || "Gagal login";
       setError(message);
     } finally {
-      setLoading(false);
+      setEmailLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
     setError(null);
-    setLoading(true);
+    setGoogleLoading(true);
 
     try {
       const auth = getFirebaseAuth();
@@ -99,12 +107,12 @@ export default function LoginForm({ errorCode }) {
       const message = errorMessages[err.code] || err.message || "Gagal login";
       setError(message);
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md rounded-3xl border border-slate-800/60 bg-slate-900/80 p-8 shadow-2xl shadow-slate-950/40">
+    <div className="w-full max-w-md rounded-3xl border border-slate-800/60 bg-slate-900/80 p-6 sm:p-8 shadow-2xl shadow-slate-950/40">
       <div className="text-center">
         <p className="text-sm uppercase tracking-[0.25em] text-slate-500">AdminKstream</p>
         <h1 className="mt-3 text-2xl font-semibold text-slate-100">Masuk ke dashboard</h1>
@@ -127,26 +135,40 @@ export default function LoginForm({ errorCode }) {
         </label>
         <label className="block text-sm text-slate-300">
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40"
-            placeholder="••••••••"
-          />
+          <div className="relative mt-2">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              className="w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 pr-12 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40"
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? "Sembunyikan password" : "Lihat password"}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-medium text-slate-400 transition hover:text-slate-200"
+            >
+              {showPassword ? "Tutup" : "Lihat"}
+            </button>
+          </div>
         </label>
         {error && (
-          <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div
+            role="alert"
+            aria-live="polite"
+            className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
+          >
             {error}
           </div>
         )}
         <button
           type="submit"
-          disabled={loading}
+          disabled={isBusy}
           className="w-full rounded-full bg-primary-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700"
         >
-          {loading ? "Memproses..." : "Masuk"}
+          {emailLoading ? "Memproses..." : "Masuk"}
         </button>
       </form>
 
@@ -159,10 +181,10 @@ export default function LoginForm({ errorCode }) {
         <button
           type="button"
           onClick={handleGoogleLogin}
-          disabled={loading}
+          disabled={isBusy}
           className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border border-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:border-primary-400 hover:text-white disabled:cursor-not-allowed disabled:border-slate-800"
         >
-          {loading ? "Menghubungkan..." : "Masuk dengan Google"}
+          {googleLoading ? "Menghubungkan..." : "Masuk dengan Google"}
         </button>
       </div>
     </div>

@@ -26,7 +26,6 @@ const StatCard = ({
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/75 p-5 shadow-lg shadow-slate-950/40 transition-colors hover:border-slate-700/80">
-      <div className="absolute right-4 top-4 h-16 w-16 rounded-full bg-primary-500/10 blur-2xl" aria-hidden="true" />
       <div className="flex items-start justify-between gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-800 bg-slate-950/80 text-xl">
           {icon}
@@ -46,7 +45,11 @@ const StatCard = ({
       </div>
       <p className="mt-4 text-xs font-medium uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-50 tabular-nums sm:text-3xl">
-        {isCurrency ? currencyFormatter.format(safeValue ?? 0) : formatNumber(safeValue, { compact: true })}
+        {safeValue === null
+          ? "-"
+          : isCurrency
+          ? currencyFormatter.format(safeValue)
+          : formatNumber(safeValue, { compact: true })}
       </p>
       {helper && <p className="mt-2 text-xs text-slate-500">{helper}</p>}
     </div>

@@ -29,6 +29,8 @@ export default function UploadForm() {
       : CONTENT_TYPES.MOVIE
   );
   const [notification, setNotification] = useState(null);
+  const [formDirty, setFormDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState(null);
 
   useEffect(() => {
     if (queryTab === "episode") {
@@ -40,25 +42,42 @@ export default function UploadForm() {
     }
   }, [queryTab]);
 
-  const handleSuccess = (payload) => {
+  const handleSuccess = (payload, type) => {
+    setFormDirty(false);
+    setPendingTab(null);
     setNotification({
       type: "success",
       text:
-        activeTab === CONTENT_TYPES.MOVIE
+        type === CONTENT_TYPES.MOVIE
           ? `Movie "${payload?.title ?? ""}" berhasil disimpan.`
-          : activeTab === "episode"
+          : type === "episode"
           ? `Episode "${payload?.title ?? ""}" berhasil ditambahkan.`
           : `Series "${payload?.title ?? ""}" berhasil disimpan.`,
     });
   };
 
-  const handleTabChange = (nextTab) => {
+  const applyTabChange = (nextTab) => {
     setActiveTab(nextTab);
+    setFormDirty(false);
+    setPendingTab(null);
     setNotification(null);
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", nextTab);
+    if (nextTab !== "episode") {
+      params.delete("seriesId");
+      params.delete("season");
+    }
     const targetPath = pathname || "/upload";
     router.replace(`${targetPath}?${params.toString()}`, { scroll: false });
+  };
+
+  const handleTabChange = (nextTab) => {
+    if (nextTab === activeTab) return;
+    if (formDirty) {
+      setPendingTab(nextTab);
+      return;
+    }
+    applyTabChange(nextTab);
   };
 
   return (
@@ -88,6 +107,31 @@ export default function UploadForm() {
         </span>
       </div>
 
+      {pendingTab && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          <span>Ada perubahan atau upload yang belum disimpan. Pindah tab akan mereset form ini.</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => applyTabChange(pendingTab)}
+              className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-amber-400"
+            >
+              Tetap Pindah
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingTab(null)}
+              className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-500/20"
+            >
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
       {notification && (
         <div
           className={`rounded-xl border px-4 py-3 text-sm ${
@@ -102,15 +146,24 @@ export default function UploadForm() {
 
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-5 sm:p-6">
         {activeTab === CONTENT_TYPES.MOVIE ? (
-          <MovieForm onSuccess={handleSuccess} submitLabel="Simpan & Publikasikan Movie" />
+          <MovieForm
+            onSuccess={(payload) => handleSuccess(payload, CONTENT_TYPES.MOVIE)}
+            onDirtyChange={setFormDirty}
+            submitLabel="Simpan & Publikasikan Movie"
+          />
         ) : activeTab === "episode" ? (
           <EpisodeUploadForm
             initialSeriesId={querySeriesId}
             initialSeason={querySeason ? Number(querySeason) : null}
-            onSuccess={handleSuccess}
+            onSuccess={(payload) => handleSuccess(payload, "episode")}
+            onDirtyChange={setFormDirty}
           />
         ) : (
-          <SeriesForm onSuccess={handleSuccess} submitLabel="Simpan & Publikasikan Series" />
+          <SeriesForm
+            onSuccess={(payload) => handleSuccess(payload, CONTENT_TYPES.SERIES)}
+            onDirtyChange={setFormDirty}
+            submitLabel="Simpan & Publikasikan Series"
+          />
         )}
       </div>
     </div>

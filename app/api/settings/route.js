@@ -22,18 +22,27 @@ export async function PUT(request) {
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return NextResponse.json({ error: "Payload pengaturan tidak valid." }, { status: 400 });
+    }
+
     const updated = await updatePlatformSettings(payload);
     await recordAuditLog({
       actor: session,
       action: "settings.update",
       targetId: "platform",
       targetType: "settings",
-      metadata: { keys: Object.keys(payload || {}) },
-    });
+      metadata: { keys: Object.keys(payload) },
+    }).catch((err) => console.warn("[PUT /api/settings] audit log failed:", err?.message || err));
+
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("PUT /api/settings", error);
-    return NextResponse.json({ error: "Gagal memperbarui pengaturan." }, { status: 500 });
+    const status = error?.statusCode || 500;
+    return NextResponse.json(
+      { error: status !== 500 ? error.message : "Gagal memperbarui pengaturan." },
+      { status }
+    );
   }
 }

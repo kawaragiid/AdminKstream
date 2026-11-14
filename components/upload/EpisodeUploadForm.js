@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { SUBTITLE_LANGUAGES } from "@/utils/constants";
 import { convertSrtToVtt } from "@/utils/subtitles";
+import MuxThumbnail, { resolveMuxSignedUrl } from "@/components/mux/MuxThumbnail";
+
+const createUid = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `uid-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const emptySubtitle = { lang: "id", label: "Indonesia", url: "" };
 
@@ -55,7 +61,7 @@ async function computeFileHash(file) {
   }
 }
 
-export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason = null, onSuccess }) {
+export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason = null, onSuccess, onDirtyChange }) {
   const [seriesList, setSeriesList] = useState([]);
   const [loadingSeries, setLoadingSeries] = useState(true);
   const [selectedSeriesId, setSelectedSeriesId] = useState(initialSeriesId || "");
@@ -77,6 +83,17 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
   const [lastSavedEpisode, setLastSavedEpisode] = useState(null);
+  const xhrRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const epNumberEditedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      xhrRef.current?.abort();
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const loadSeriesList = async () => {
     setLoadingSeries(true);
@@ -143,7 +160,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
 
   // Auto-hitung nomor episode berikutnya ketika Series atau Season berubah
   useEffect(() => {
-    if (!selectedSeries) return;
+    if (!selectedSeries || epNumberEditedRef.current) return;
     const maxEp = episodesInSelectedSeason.reduce((max, ep) => Math.max(max, Number(ep.epNumber ?? 0)), 0);
     setEpNumber(maxEp + 1);
   }, [selectedSeriesId, seasonNumber, selectedSeries, episodesInSelectedSeason]);
@@ -154,6 +171,13 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
 
   const handleVideoFileSelect = async (file) => {
     if (!file) return;
+    xhrRef.current?.abort();
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    onDirtyChange?.(true);
+    setLastSavedEpisode(null);
     setCurrentVideoFile(file);
     setUploadStatus("uploading");
     setUploadProgress(0);
@@ -161,6 +185,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
 
     try {
       const fingerprint = await computeFileHash(file);
+      if (controller.signal.aborted) return;
       if (fingerprint) {
         setFileHash(fingerprint);
         try {
@@ -168,6 +193,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ fingerprint, type: "episode" }),
+            signal: controller.signal,
           });
           if (lookupRes.ok) {
             const lookupJson = await lookupRes.json().catch(() => ({}));
@@ -184,13 +210,16 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               return;
             }
           }
-        } catch {}
+        } catch (err) {
+          if (err?.name === "AbortError" || controller.signal.aborted) return;
+        }
       }
 
       const initRes = await fetch("/api/mux/direct-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ corsOrigin: window.location.origin }),
+        signal: controller.signal,
       });
       const initJson = await initRes.json().catch(() => ({}));
       if (!initRes.ok) throw new Error(initJson?.error ?? "Gagal membuat URL upload Mux.");
@@ -200,53 +229,98 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       if (!uploadUrl || !uploadId) throw new Error("Response upload Mux tidak lengkap.");
       setMuxUploadId(uploadId);
 
-      // Upload via XHR untuk progress bar
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", uploadUrl, true);
-        xhr.upload.onprogress = (ev) => {
-          if (ev.lengthComputable) {
-            setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`Upload Mux gagal (HTTP ${xhr.status}).`));
-        };
-        xhr.onerror = () => reject(new Error("Koneksi upload ke Mux terputus."));
-        xhr.send(file);
-      });
+      // Upload via XHR untuk progress bar, dengan fallback proxy-upload
+      let ok = false;
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhrRef.current = xhr;
+          xhr.open("PUT", uploadUrl, true);
+          xhr.upload.onprogress = (ev) => {
+            if (ev.lengthComputable) {
+              setUploadProgress(Math.round((ev.loaded / ev.total) * 100));
+            }
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`Upload Mux gagal (HTTP ${xhr.status}).`));
+          };
+          xhr.onerror = () => reject(new Error("Koneksi upload ke Mux terputus."));
+          xhr.onabort = () => reject(new DOMException("Aborted", "AbortError"));
+          xhr.send(file);
+        });
+        ok = true;
+      } catch (xhrErr) {
+        if (xhrErr?.name === "AbortError" || controller.signal.aborted) return;
+      }
+
+      if (!ok) {
+        const proxyUrl = `/api/mux/proxy-upload?method=PUT&url=${encodeURIComponent(uploadUrl)}`;
+        setUploadProgress((prev) => (prev < 90 ? 90 : prev));
+        const proxyRes = await fetch(proxyUrl, {
+          method: "POST",
+          body: file,
+          signal: controller.signal,
+        });
+        ok = proxyRes.ok;
+      }
+
+      if (!ok) {
+        throw new Error("Upload ke Mux gagal (CORS atau jaringan).");
+      }
 
       setUploadProgress(100);
       setMessage({ type: "info", text: "Video terkirim! Menunggu Mux memproses Playback ID..." });
 
-      // Polling status upload Mux
+      // Polling status upload Mux hingga siap atau errored
       let resolvedPlayback = "";
       let resolvedAssetId = "";
       let resolvedDuration = null;
+      let assetReady = false;
 
-      for (let i = 0; i < 20; i += 1) {
+      for (let i = 0; i < 48; i += 1) {
+        if (controller.signal.aborted) return;
         await new Promise((r) => setTimeout(r, 2500));
-        const stRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
+        if (controller.signal.aborted) return;
+
+        const stRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`, {
+          signal: controller.signal,
+        });
         const stJson = await stRes.json().catch(() => ({}));
         const asset = stJson?.data?.asset;
         const statusObj = stJson?.data?.status;
+        const currentAssetStatus = asset?.status ?? statusObj?.status;
+        if (currentAssetStatus === "errored" || statusObj?.status === "errored") {
+          throw new Error("Pemrosesan video episode di Mux gagal (errored).");
+        }
         const pb = asset?.playback_ids?.[0]?.id || statusObj?.playback_ids?.[0]?.id || "";
         const aid = statusObj?.asset_id || asset?.id || "";
-        if (pb) {
-          resolvedPlayback = pb;
-          resolvedAssetId = aid;
-          resolvedDuration = asset?.duration ? Math.round(asset.duration) : null;
+        if (pb) resolvedPlayback = pb;
+        if (aid) resolvedAssetId = aid;
+        if (asset?.duration) resolvedDuration = Math.round(asset.duration);
+        if (currentAssetStatus === "ready" && resolvedPlayback) {
+          assetReady = true;
           break;
         }
       }
 
-      if (resolvedPlayback) {
+      if (controller.signal.aborted) return;
+
+      if (resolvedPlayback && assetReady) {
         setMuxPlaybackId(resolvedPlayback);
         setMuxAssetId(resolvedAssetId);
         if (resolvedDuration && !duration) setDuration(String(resolvedDuration));
         setUploadStatus("success");
         setMessage({ type: "success", text: `Video siap! Playback ID: ${resolvedPlayback}` });
+      } else if (resolvedPlayback) {
+        setMuxPlaybackId(resolvedPlayback);
+        setMuxAssetId(resolvedAssetId);
+        if (resolvedDuration && !duration) setDuration(String(resolvedDuration));
+        setUploadStatus("error");
+        setMessage({
+          type: "warning",
+          text: "Video masih diproses di Mux. Klik 'Cek Status Mux' beberapa saat lagi.",
+        });
       } else {
         setUploadStatus("error");
         setMessage({
@@ -255,6 +329,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
         });
       }
     } catch (err) {
+      if (err?.name === "AbortError" || controller.signal.aborted) return;
       setUploadStatus("error");
       setMessage({ type: "error", text: err?.message ?? "Gagal mengunggah video ke Mux." });
     }
@@ -303,6 +378,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
     const targetSub = subtitles?.[index];
+    const targetUid = targetSub?._uid;
     try {
       const text = await file.text();
       const isSrt = file.type === "application/x-subrip" || file.name.toLowerCase().endsWith(".srt");
@@ -319,9 +395,12 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       if (!res.ok || !json?.data?.url) throw new Error(json?.error ?? "Gagal mengunggah subtitle.");
       setSubtitles((prev) => {
         const next = [...prev];
-        next[index] = { ...next[index], url: json.data.url };
+        const targetIndex = targetUid ? next.findIndex((item) => item?._uid === targetUid) : index;
+        if (targetIndex === -1) return prev;
+        next[targetIndex] = { ...next[targetIndex], url: json.data.url };
         return next;
       });
+      onDirtyChange?.(true);
       setMessage({ type: "success", text: "Subtitle berhasil dikonversi & diunggah." });
     } catch (err) {
       setMessage({ type: "error", text: err?.message ?? "Gagal mengunggah subtitle." });
@@ -339,17 +418,27 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       setMessage({ type: "error", text: "Upload video ke Mux atau isi Playback ID terlebih dahulu." });
       return;
     }
+    if (!title.trim()) {
+      setMessage({ type: "error", text: "Judul episode wajib diisi." });
+      return;
+    }
+    if (description.trim().length < 10) {
+      setMessage({ type: "error", text: "Deskripsi episode minimal 10 karakter." });
+      return;
+    }
     setIsSubmitting(true);
     setMessage(null);
 
     try {
-      const cleanSubtitles = subtitles.filter((s) => /^https?:\/\//i.test(s.url || ""));
+      const cleanSubtitles = subtitles
+        .filter((s) => /^https?:\/\//i.test(s.url || ""))
+        .map(({ _uid, ...rest }) => rest);
       let resolvedAssetId = muxAssetId;
       if (!resolvedAssetId && cleanPlayback) {
         resolvedAssetId = await resolveAssetIdFromPlayback(cleanPlayback);
       }
       if (cleanSubtitles.length && resolvedAssetId) {
-        await fetch("/api/mux/text-tracks", {
+        const trackRes = await fetch("/api/mux/text-tracks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -360,8 +449,19 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               name: s.label || s.lang || "Subtitle",
             })),
           }),
-        }).catch(() => {});
+        });
+        const trackJson = await trackRes.json().catch(() => ({}));
+        const failedTracks = Array.isArray(trackJson?.data)
+          ? trackJson.data.filter((item) => item?.ok === false)
+          : [];
+        if (!trackRes.ok || failedTracks.length > 0) {
+          throw new Error(trackJson?.error ?? "Gagal mengirim subtitle ke Mux. Periksa URL subtitle dan coba lagi.");
+        }
       }
+
+      const resolvedThumb =
+        thumbnail.trim() ||
+        (cleanPlayback ? await resolveMuxSignedUrl({ playbackId: cleanPlayback, type: "thumbnail", time: 5 }) : null);
 
       const payload = {
         seasonNumber: Number(seasonNumber) || 1,
@@ -369,9 +469,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
         title: title.trim(),
         description: description.trim(),
         duration: duration ? Number(duration) : null,
-        thumbnail:
-          thumbnail.trim() ||
-          (cleanPlayback ? `https://image.mux.com/${cleanPlayback}/thumbnail.jpg?width=640` : null),
+        thumbnail: resolvedThumb,
         mux_asset_id: resolvedAssetId || null,
         mux_playback_id: cleanPlayback,
         mux_video_id: cleanPlayback,
@@ -400,7 +498,9 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
         type: "success",
         text: `Episode S${String(payload.seasonNumber).padStart(2, "0")}E${String(payload.epNumber).padStart(2, "0")} "${payload.title}" berhasil ditambahkan ke ${selectedSeries?.title ?? "Series"}!`,
       });
+      epNumberEditedRef.current = false;
       await loadSeriesList();
+      onDirtyChange?.(false);
       onSuccess?.(json?.data ?? payload);
 
       // Siapkan form untuk episode berikutnya
@@ -414,6 +514,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       setFileHash(null);
       setSubtitles([]);
       setCurrentVideoFile(null);
+      if (videoInputRef.current) videoInputRef.current.value = "";
       setUploadStatus("idle");
       setUploadProgress(0);
     } catch (err) {
@@ -447,6 +548,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
             <select
               value={selectedSeriesId}
               onChange={(e) => {
+                epNumberEditedRef.current = false;
                 setSelectedSeriesId(e.target.value);
                 setSeasonNumber(1);
                 setLastSavedEpisode(null);
@@ -487,7 +589,10 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
                   <button
                     key={sNum}
                     type="button"
-                    onClick={() => setSeasonNumber(sNum)}
+                    onClick={() => {
+                      epNumberEditedRef.current = false;
+                      setSeasonNumber(sNum);
+                    }}
                     className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
                       active
                         ? "border-primary-500 bg-primary-600 text-white"
@@ -536,9 +641,14 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
             </span>
             <span className="mt-1 text-[11px] text-slate-400">Otomatis cek duplikat & encoding Basic $0</span>
             <input
+              ref={videoInputRef}
               type="file"
               accept="video/*"
-              onChange={(e) => handleVideoFileSelect(e.target.files?.[0])}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) handleVideoFileSelect(file);
+              }}
               className="hidden"
             />
           </label>
@@ -600,7 +710,10 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               type="number"
               min={1}
               value={seasonNumber}
-              onChange={(e) => setSeasonNumber(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(e) => {
+                epNumberEditedRef.current = false;
+                setSeasonNumber(Math.max(1, Number(e.target.value) || 1));
+              }}
               required
               className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100"
             />
@@ -611,7 +724,11 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               type="number"
               min={1}
               value={epNumber}
-              onChange={(e) => setEpNumber(Math.max(1, Number(e.target.value) || 1))}
+              onChange={(e) => {
+                epNumberEditedRef.current = true;
+                onDirtyChange?.(true);
+                setEpNumber(Math.max(1, Number(e.target.value) || 1));
+              }}
               required
               className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100"
             />
@@ -670,13 +787,10 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
           {(thumbnail.trim() || normalizePlaybackValue(muxPlaybackId)) && (
             <div className="space-y-1.5">
               <span className="block text-xs font-medium text-slate-300">Preview Thumbnail</span>
-              <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={
-                    thumbnail.trim() ||
-                    `https://image.mux.com/${normalizePlaybackValue(muxPlaybackId)}/thumbnail.jpg?width=640`
-                  }
+              <div className="h-28 overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                <MuxThumbnail
+                  src={thumbnail.trim()}
+                  playbackId={normalizePlaybackValue(muxPlaybackId)}
                   alt="Preview thumbnail episode"
                   className="h-28 w-full object-cover"
                 />
@@ -691,14 +805,14 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
             <span className="text-xs font-medium text-slate-300">Subtitle Episode (Opsional)</span>
             <button
               type="button"
-              onClick={() => setSubtitles((prev) => [...prev, { ...emptySubtitle }])}
+              onClick={() => setSubtitles((prev) => [...prev, { ...emptySubtitle, _uid: createUid() }])}
               className="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500"
             >
               + Tambah Subtitle
             </button>
           </div>
           {subtitles.map((sub, idx) => (
-            <div key={idx} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-2">
+            <div key={sub._uid ?? idx} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={sub.lang}
@@ -747,7 +861,11 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
                 <input
                   type="file"
                   accept=".vtt,.srt,text/vtt,application/x-subrip"
-                  onChange={(e) => handleSubtitleFile(idx, e.target.files?.[0])}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) handleSubtitleFile(idx, file);
+                  }}
                   className="text-xs text-slate-400"
                 />
               </div>

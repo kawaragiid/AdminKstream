@@ -23,7 +23,7 @@ export default async function ToolsPage() {
           Export data (CSV/JSON), import metadata massal, dan utilitas backup database.
         </p>
       </header>
-      <ToolsPanel />
+      <ToolsPanel userRole={session.role} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-﻿const TIME_REGEX = /(\d{2}:\d{2}:\d{2}),(\d{3})/g;
+﻿const TIME_REGEX = /(\d{1,2}):(\d{2}:\d{2})[,.](\d{3})/g;
 
 export function convertSrtToVtt(srtText = "") {
   if (typeof srtText !== "string" || !srtText.trim()) {
@@ -21,7 +21,9 @@ export function convertSrtToVtt(srtText = "") {
         continue;
       }
     }
-    cleaned.push(line.replace(TIME_REGEX, (_match, time, ms) => `${time}.${ms}`));
+    cleaned.push(
+      line.replace(TIME_REGEX, (_match, hours, rest, ms) => `${hours.padStart(2, "0")}:${rest}.${ms}`)
+    );
   }
 
   return `WEBVTT\n\n${cleaned.join("\n")}`;

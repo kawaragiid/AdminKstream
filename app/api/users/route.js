@@ -30,15 +30,25 @@ export async function POST(request) {
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+    }
+
     const targetRole = payload?.role ?? ADMIN_ROLES.ADMIN;
     const targetPlan = payload?.plan ?? USER_PLANS.FREE;
 
     if (!VALID_ROLES.has(targetRole) || !VALID_PLANS.has(targetPlan)) {
       return NextResponse.json({ error: "Role atau plan tidak valid." }, { status: 400 });
     }
-    if (targetRole === ADMIN_ROLES.SUPER_ADMIN && session.role !== ADMIN_ROLES.SUPER_ADMIN) {
-      return NextResponse.json({ error: "Hanya super-admin yang dapat membuat super-admin." }, { status: 403 });
+    if (
+      (targetRole === ADMIN_ROLES.SUPER_ADMIN || targetRole === ADMIN_ROLES.ADMIN) &&
+      session.role !== ADMIN_ROLES.SUPER_ADMIN
+    ) {
+      return NextResponse.json(
+        { error: "Hanya super-admin yang dapat membuat akun admin atau super-admin." },
+        { status: 403 }
+      );
     }
     if (!payload?.email || !payload?.password || String(payload.password).length < 6) {
       return NextResponse.json({ error: "Email dan password minimal 6 karakter wajib diisi." }, { status: 400 });
@@ -58,11 +68,17 @@ export async function POST(request) {
       targetId: user.uid,
       targetType: "user",
       metadata: { email: user.email, role: user.role },
-    });
+    }).catch((err) => console.warn("[POST /api/users] audit log failed:", err?.message || err));
 
     return NextResponse.json({ data: user }, { status: 201 });
   } catch (error) {
     console.error("POST /api/users", error);
+    if (error?.code === "auth/email-already-exists") {
+      return NextResponse.json({ error: "Email sudah terdaftar." }, { status: 409 });
+    }
+    if (error?.code === "auth/invalid-email" || error?.code === "auth/invalid-password") {
+      return NextResponse.json({ error: error.message || "Email atau password tidak valid." }, { status: 400 });
+    }
     return NextResponse.json({ error: "Gagal membuat admin/editor baru." }, { status: 500 });
   }
 }
@@ -72,7 +88,10 @@ export async function PATCH(request) {
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+    }
     if (!payload.uid) {
       return NextResponse.json({ error: "UID wajib diisi." }, { status: 400 });
     }
@@ -87,8 +106,14 @@ export async function PATCH(request) {
       if (payload.uid === session.uid && payload.role && payload.role !== session.role) {
         return NextResponse.json({ error: "Tidak dapat mengubah role akun sendiri." }, { status: 400 });
       }
-      if (payload.role === ADMIN_ROLES.SUPER_ADMIN && session.role !== ADMIN_ROLES.SUPER_ADMIN) {
-        return NextResponse.json({ error: "Hanya super-admin yang dapat menetapkan role super-admin." }, { status: 403 });
+      if (
+        (payload.role === ADMIN_ROLES.SUPER_ADMIN || payload.role === ADMIN_ROLES.ADMIN) &&
+        session.role !== ADMIN_ROLES.SUPER_ADMIN
+      ) {
+        return NextResponse.json(
+          { error: "Hanya super-admin yang dapat menetapkan role admin atau super-admin." },
+          { status: 403 }
+        );
       }
       await updateUserRole(payload.uid, { role: payload.role, plan: payload.plan, actorRole: session.role });
       await recordAuditLog({
@@ -97,7 +122,7 @@ export async function PATCH(request) {
         targetId: payload.uid,
         targetType: "user",
         metadata: { role: payload.role, plan: payload.plan },
-      });
+      }).catch((err) => console.warn("[PATCH /api/users] audit log failed:", err?.message || err));
       return NextResponse.json({ success: true });
     }
 
@@ -114,7 +139,7 @@ export async function PATCH(request) {
         action: payload.disabled ? "user.suspend" : "user.activate",
         targetId: payload.uid,
         targetType: "user",
-      });
+      }).catch((err) => console.warn("[PATCH /api/users] audit log failed:", err?.message || err));
       return NextResponse.json({ success: true });
     }
 
@@ -122,6 +147,22 @@ export async function PATCH(request) {
       if (payload.plan !== undefined && !VALID_PLANS.has(payload.plan)) {
         return NextResponse.json({ error: "Plan tidak valid." }, { status: 400 });
       }
+      if (payload.isActive !== undefined && typeof payload.isActive !== "boolean") {
+        return NextResponse.json({ error: "isActive harus berupa boolean." }, { status: 400 });
+      }
+      if (
+        payload.extendDays !== undefined &&
+        (typeof payload.extendDays !== "number" ||
+          !Number.isFinite(payload.extendDays) ||
+          payload.extendDays < 1 ||
+          payload.extendDays > 3650)
+      ) {
+        return NextResponse.json(
+          { error: "extendDays harus berupa angka antara 1 hingga 3650." },
+          { status: 400 }
+        );
+      }
+
       const result = await updateUserSubscription(payload.uid, {
         plan: payload.plan,
         isActive: payload.isActive,
@@ -137,17 +178,17 @@ export async function PATCH(request) {
         metadata: {
           plan: payload.plan ?? undefined,
           isActive: payload.isActive ?? undefined,
-          expiresAt: payload.expiresAt === null ? null : (result.expiresAt ?? payload.expiresAt ?? undefined),
+          expiresAt: payload.expiresAt === null ? null : result.expiresAt ?? payload.expiresAt ?? undefined,
           extendDays: payload.extendDays ?? undefined,
         },
-      });
+      }).catch((err) => console.warn("[PATCH /api/users] audit log failed:", err?.message || err));
       return NextResponse.json({ success: true, expiresAt: result.expiresAt ?? null });
     }
 
     return NextResponse.json({ error: "Aksi tidak dikenal." }, { status: 400 });
   } catch (error) {
     console.error("PATCH /api/users", error);
-    const statusCode = error?.statusCode || 500;
+    const statusCode = error?.statusCode || (error?.code === "auth/user-not-found" ? 404 : 500);
     return NextResponse.json(
       { error: statusCode !== 500 ? error.message : "Gagal memperbarui pengguna." },
       { status: statusCode }

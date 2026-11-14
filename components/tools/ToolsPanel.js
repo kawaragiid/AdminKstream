@@ -25,13 +25,17 @@ const sampleRecord = JSON.stringify(
   0
 );
 
-const ToolsPanel = () => {
+const ToolsPanel = ({ userRole = "admin" }) => {
+  const isSuperAdmin = userRole === "super-admin";
   const fileInputRef = useRef(null);
+  const dbInputRef = useRef(null);
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dbTables, setDbTables] = useState(() => new Set(DATABASE_TABLES));
+  const [pendingDbImport, setPendingDbImport] = useState(null);
 
   const triggerDownload = async (type, format = "csv") => {
+    setLoading(true);
     setMessage(null);
     try {
       const response = await fetch(`/api/tools/export?type=${type}&format=${format}`);
@@ -56,6 +60,8 @@ const ToolsPanel = () => {
       setMessage({ type: "success", text: `File ${filename} berhasil diunduh.` });
     } catch (error) {
       setMessage({ type: "error", text: error.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -92,6 +98,7 @@ const ToolsPanel = () => {
   };
 
   const exportDatabase = async () => {
+    setLoading(true);
     setMessage(null);
     try {
       const tables = Array.from(dbTables);
@@ -113,34 +120,64 @@ const ToolsPanel = () => {
       setMessage({ type: "success", text: `Export Database Neon (${tables.length || "semua"} tabel).` });
     } catch (error) {
       setMessage({ type: "error", text: error.message });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const importDatabase = async (event) => {
+  const handleSelectDatabaseFile = async (event) => {
     const inputEl = event.target;
     const file = inputEl?.files?.[0];
     if (!file) return;
-    setLoading(true);
     setMessage(null);
     try {
       const text = await file.text();
       const json = JSON.parse(text);
+      const tablesObj = json?.tables ?? json?.collections ?? json;
+      if (!tablesObj || typeof tablesObj !== "object" || Array.isArray(tablesObj)) {
+        throw new Error("Format JSON tidak valid. Harus berupa objek tabel database.");
+      }
+      const matchedTables = DATABASE_TABLES.filter((t) => Array.isArray(tablesObj[t]));
+      if (!matchedTables.length) {
+        throw new Error("File JSON tidak memiliki tabel yang dikenal (movies, series, users, dll).");
+      }
+      const totalRows = matchedTables.reduce((sum, t) => sum + tablesObj[t].length, 0);
+      setPendingDbImport({
+        fileName: file.name,
+        tables: tablesObj,
+        matchedTables,
+        totalRows,
+      });
+    } catch (error) {
+      console.error(error);
+      setPendingDbImport(null);
+      setMessage({ type: "error", text: error.message });
+    } finally {
+      if (inputEl) inputEl.value = "";
+    }
+  };
+
+  const confirmImportDatabase = async () => {
+    if (!pendingDbImport) return;
+    setLoading(true);
+    setMessage(null);
+    try {
       const response = await fetch("/api/tools/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "database", tables: json.tables ?? json.collections ?? json, merge: true }),
+        body: JSON.stringify({ type: "database", tables: pendingDbImport.tables, merge: true }),
       });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error ?? "Gagal import database");
       }
       setMessage({ type: "success", text: `Import selesai. ${result.data?.length ?? 0} baris diproses.` });
+      setPendingDbImport(null);
     } catch (error) {
       console.error(error);
       setMessage({ type: "error", text: error.message });
     } finally {
       setLoading(false);
-      if (inputEl) inputEl.value = "";
     }
   };
 
@@ -153,68 +190,104 @@ const ToolsPanel = () => {
           <button
             type="button"
             onClick={() => triggerDownload("content")}
-            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
+            disabled={loading}
+            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200 disabled:opacity-50"
           >
             Export Konten (CSV)
           </button>
           <button
             type="button"
             onClick={() => triggerDownload("users")}
-            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
+            disabled={loading}
+            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200 disabled:opacity-50"
           >
             Export User (CSV)
           </button>
           <button
             type="button"
             onClick={() => triggerDownload("analytics", "json")}
-            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
+            disabled={loading}
+            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200 disabled:opacity-50"
           >
             Export Analytics (JSON)
           </button>
         </div>
       </div>
 
-      <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
-        <h3 className="text-lg font-semibold text-slate-100">Database (Neon) Export / Import</h3>
-        <p className="text-sm text-slate-400">Unduh atau unggah snapshot tabel Database Neon Postgres (JSON).</p>
-        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-          {DATABASE_TABLES.map((table) => (
-            <label key={table} className="flex items-center gap-2 text-xs text-slate-300">
-              <input
-                type="checkbox"
-                checked={dbTables.has(table)}
-                onChange={(e) => {
-                  setDbTables((prev) => {
-                    const next = new Set(prev);
-                    if (e.target.checked) next.add(table);
-                    else next.delete(table);
-                    return next;
-                  });
-                }}
-                className="h-4 w-4 rounded border-slate-700 bg-slate-900"
-              />
-              {table}
-            </label>
-          ))}
+      {isSuperAdmin && (
+        <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
+          <h3 className="text-lg font-semibold text-slate-100">Database (Neon) Export / Import</h3>
+          <p className="text-sm text-slate-400">Unduh atau unggah snapshot tabel Database Neon Postgres (JSON).</p>
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+            {DATABASE_TABLES.map((table) => (
+              <label key={table} className="flex items-center gap-2 text-xs text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={dbTables.has(table)}
+                  onChange={(e) => {
+                    setDbTables((prev) => {
+                      const next = new Set(prev);
+                      if (e.target.checked) next.add(table);
+                      else next.delete(table);
+                      return next;
+                    });
+                  }}
+                  className="h-4 w-4 rounded border-slate-700 bg-slate-900"
+                />
+                {table}
+              </label>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={exportDatabase}
+              disabled={loading}
+              className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200 disabled:opacity-50"
+            >
+              {loading ? "Memproses..." : "Export Database (JSON)"}
+            </button>
+            <div className="text-xs text-slate-400">atau import:</div>
+            <input
+              ref={dbInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleSelectDatabaseFile}
+              disabled={loading}
+              className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-3 text-xs text-slate-400"
+            />
+          </div>
+          {pendingDbImport && (
+            <div
+              role="alert"
+              className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
+            >
+              <span>
+                Konfirmasi import <strong>{pendingDbImport.fileName}</strong> ({pendingDbImport.matchedTables.join(", ")} —{" "}
+                {pendingDbImport.totalRows} baris, mode merge)?
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={confirmImportDatabase}
+                  disabled={loading}
+                  className="rounded-lg bg-amber-500 px-3 py-1.5 font-semibold text-slate-950 hover:bg-amber-400 disabled:opacity-50"
+                >
+                  {loading ? "Mengimpor..." : "Ya, Import Database"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingDbImport(null)}
+                  disabled={loading}
+                  className="rounded-lg border border-amber-500/40 px-3 py-1.5 font-medium text-amber-100 hover:bg-amber-500/20"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={exportDatabase}
-            className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
-          >
-            Export Database (JSON)
-          </button>
-          <div className="text-xs text-slate-400">atau import:</div>
-          <input
-            type="file"
-            accept="application/json"
-            onChange={importDatabase}
-            disabled={loading}
-            className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-3 text-xs text-slate-400"
-          />
-        </div>
-      </div>
+      )}
 
       <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
         <h3 className="text-lg font-semibold text-slate-100">Import Metadata Konten</h3>

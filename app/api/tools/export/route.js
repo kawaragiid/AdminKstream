@@ -19,7 +19,6 @@ const ALLOWED_DATABASE_TABLES = new Set([
 function escapeCsvCell(value) {
   if (value === null || value === undefined) return '""';
   const raw = typeof value === "object" ? JSON.stringify(value) : String(value);
-  // Netralisir formula injection (CWE-1236) dengan awalan petik tunggal.
   const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, '""')}"`;
 }
@@ -31,6 +30,27 @@ function toCsv(records) {
     headers.map((header) => escapeCsvCell(record[header])).join(",")
   );
   return [headers.map(escapeCsvCell).join(","), ...rows].join("\n");
+}
+
+async function queryTableRows(sql, table) {
+  switch (table) {
+    case "movies":
+      return sql`SELECT * FROM movies ORDER BY created_at DESC LIMIT 5000`;
+    case "series":
+      return sql`SELECT * FROM series ORDER BY created_at DESC LIMIT 5000`;
+    case "platform_settings":
+      return sql`SELECT * FROM platform_settings ORDER BY id ASC LIMIT 1000`;
+    case "users":
+      return sql`SELECT * FROM users ORDER BY updated_at DESC LIMIT 5000`;
+    case "analytics_snapshots":
+      return sql`SELECT * FROM analytics_snapshots ORDER BY id ASC LIMIT 1000`;
+    case "audit_logs":
+      return sql`SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 5000`;
+    case "notifications":
+      return sql`SELECT * FROM notifications ORDER BY created_at DESC LIMIT 5000`;
+    default:
+      return [];
+  }
 }
 
 export async function GET(request) {
@@ -48,13 +68,14 @@ export async function GET(request) {
         return NextResponse.json({ data });
       }
       const csv = toCsv(
-        data.map(({ id, title, category, status, views, createdAt }) => ({
-          id,
-          title,
-          category,
-          status,
-          views,
-          createdAt,
+        data.map((item) => ({
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          category: item.category,
+          status: item.status ?? (item.type === "movie" ? "Published" : "Ongoing"),
+          views: item.views ?? 0,
+          createdAt: item.createdAt,
         }))
       );
       return new NextResponse(csv, {
@@ -67,7 +88,10 @@ export async function GET(request) {
 
     if (type === "users") {
       if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
-        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor data pengguna." }, { status: 403 });
+        return NextResponse.json(
+          { error: "Hanya super-admin yang dapat mengekspor data pengguna." },
+          { status: 403 }
+        );
       }
       const { users } = await listUsers({ limit: 1000 });
       if (format === "json") {
@@ -94,10 +118,16 @@ export async function GET(request) {
 
     if (type === "database" || type === "firestore") {
       if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
-        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor database." }, { status: 403 });
+        return NextResponse.json(
+          { error: "Hanya super-admin yang dapat mengekspor database." },
+          { status: 403 }
+        );
       }
       if (!isNeonConfigured()) {
-        return NextResponse.json({ error: "Database Neon belum dikonfigurasi untuk export." }, { status: 400 });
+        return NextResponse.json(
+          { error: "Database Neon belum dikonfigurasi untuk export." },
+          { status: 400 }
+        );
       }
 
       const raw = searchParams.get("tables") ?? searchParams.get("collections") ?? "";
@@ -110,31 +140,29 @@ export async function GET(request) {
 
       await ensureNeonSchema();
       const sql = getSql();
-      const result = {};
-      if (tables.includes("movies")) {
-        result.movies = await sql`SELECT * FROM movies ORDER BY created_at DESC`;
-      }
-      if (tables.includes("series")) {
-        result.series = await sql`SELECT * FROM series ORDER BY created_at DESC`;
-      }
-      if (tables.includes("platform_settings")) {
-        result.platform_settings = await sql`SELECT * FROM platform_settings ORDER BY id ASC`;
-      }
-      if (tables.includes("users")) {
-        result.users = await sql`SELECT * FROM users ORDER BY updated_at DESC`;
-      }
-      if (tables.includes("analytics_snapshots")) {
-        result.analytics_snapshots = await sql`SELECT * FROM analytics_snapshots ORDER BY id ASC`;
-      }
-      if (tables.includes("audit_logs")) {
-        result.audit_logs = await sql`SELECT * FROM audit_logs ORDER BY created_at DESC`;
-      }
-      if (tables.includes("notifications")) {
-        result.notifications = await sql`SELECT * FROM notifications ORDER BY created_at DESC`;
-      }
+      const encoder = new TextEncoder();
 
-      const body = JSON.stringify({ exportedAt: new Date().toISOString(), tables: result }, null, 2);
-      return new NextResponse(body, {
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            controller.enqueue(
+              encoder.encode(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"tables":{`)
+            );
+            for (let i = 0; i < tables.length; i += 1) {
+              const table = tables[i];
+              const rows = await queryTableRows(sql, table);
+              const prefix = i > 0 ? "," : "";
+              controller.enqueue(encoder.encode(`${prefix}${JSON.stringify(table)}:${JSON.stringify(rows)}`));
+            }
+            controller.enqueue(encoder.encode("}}"));
+            controller.close();
+          } catch (err) {
+            controller.error(err);
+          }
+        },
+      });
+
+      return new Response(stream, {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Content-Disposition": "attachment; filename=database-export.json",

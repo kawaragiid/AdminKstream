@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { getAuth } from "firebase-admin/auth";
 import { createMovie, createSeries } from "@/lib/firestoreService";
+import { getFirebaseAdminApp, isFirebaseConfigured } from "@/lib/firebase";
 import { ensureNeonSchema, getSql, isNeonConfigured } from "@/lib/neonDb";
-import { ADMIN_ROLES } from "@/utils/constants";
+import { ADMIN_ROLES, CUSTOMER_ROLE } from "@/utils/constants";
 import { validateMoviePayload, validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -22,17 +24,53 @@ function serializeHashValue(value) {
   return value ? JSON.stringify(value) : "";
 }
 
+async function resolveUniqueSlugs(sql, table, rows) {
+  const slugs = rows.map((r) => String(r.slug || r.id)).filter(Boolean);
+  if (!slugs.length) return new Map();
+
+  const existing =
+    table === "movies"
+      ? await sql`SELECT id, slug FROM movies WHERE slug = ANY(${slugs})`
+      : await sql`SELECT id, slug FROM series WHERE slug = ANY(${slugs})`;
+
+  const slugOwner = new Map(existing.map((e) => [e.slug, e.id]));
+  const usedInBatch = new Set();
+  const resolved = new Map();
+
+  for (const row of rows) {
+    let candidate = String(row.slug || row.id);
+    const owner = slugOwner.get(candidate);
+    if ((owner && owner !== row.id) || usedInBatch.has(candidate)) {
+      candidate = `${candidate}-${String(row.id).slice(0, 6)}`;
+    }
+    usedInBatch.add(candidate);
+    resolved.set(row.id, candidate);
+  }
+  return resolved;
+}
+
 export async function POST(request) {
   const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
+    if (!payload || typeof payload !== "object") {
+      return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+    }
+
     // Import metadata konten (legacy)
     if (payload.type === "content") {
       if (!Array.isArray(payload.records)) {
         return NextResponse.json({ error: "Format import tidak valid." }, { status: 400 });
       }
+      if (payload.records.length > MAX_IMPORT_DOCS) {
+        return NextResponse.json(
+          { error: `Melebihi batas maksimum ${MAX_IMPORT_DOCS} item per import.`, data: [] },
+          { status: 400 }
+        );
+      }
+
       const results = [];
       for (const record of payload.records) {
         if (!record || typeof record !== "object") {
@@ -57,9 +95,10 @@ export async function POST(request) {
             throw new Error(typeof firstError === "string" ? firstError : "Validasi metadata konten gagal.");
           }
 
-          const created = normalizedRecord.type === "series"
-            ? await createSeries(normalizedRecord, session)
-            : await createMovie(normalizedRecord, session);
+          const created =
+            normalizedRecord.type === "series"
+              ? await createSeries(normalizedRecord, session)
+              : await createMovie(normalizedRecord, session);
           results.push({ id: created.id, status: "success" });
         } catch (error) {
           results.push({ title: record?.title ?? "unknown", status: "failed", message: error.message });
@@ -70,7 +109,7 @@ export async function POST(request) {
         action: "tools.import.content",
         targetType: "content",
         metadata: { count: results.length },
-      });
+      }).catch((err) => console.warn("[import content] audit log failed:", err?.message || err));
       return NextResponse.json({ data: results });
     }
 
@@ -94,7 +133,7 @@ export async function POST(request) {
         if (!Array.isArray(rows)) continue;
         for (const row of rows) {
           if (!row || typeof row !== "object") continue;
-          const rowKey = table === "users" ? (row.uid || row.id) : row.id;
+          const rowKey = table === "users" ? row.uid || row.id : row.id;
           if (!rowKey || typeof rowKey !== "string") continue;
           operations.push({ table, row });
         }
@@ -109,15 +148,25 @@ export async function POST(request) {
 
       await ensureNeonSchema();
       const sql = getSql();
+
+      const movieOps = operations.filter((op) => op.table === "movies").map((op) => op.row);
+      const seriesOps = operations.filter((op) => op.table === "series").map((op) => op.row);
+      const [movieSlugMap, seriesSlugMap] = await Promise.all([
+        resolveUniqueSlugs(sql, "movies", movieOps),
+        resolveUniqueSlugs(sql, "series", seriesOps),
+      ]);
+
+      const txQueries = [];
       const summary = [];
+      const usersToSync = [];
 
       for (const { table, row } of operations) {
         if (table === "movies") {
-          const slug = row.slug || `${row.id}`;
+          const slug = movieSlugMap.get(row.id) || `${row.id}`;
           const createdAt = row.created_at ?? row.createdAt ?? new Date().toISOString();
           const updatedAt = row.updated_at ?? row.updatedAt ?? new Date().toISOString();
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO movies (
                 id, type, title, slug, description, category,
                 mux_asset_id, mux_playback_id, mux_video_id, thumbnail, backdrop_url, trailer,
@@ -164,9 +213,9 @@ export async function POST(request) {
                 orientation = EXCLUDED.orientation,
                 file_hash = EXCLUDED.file_hash,
                 updated_at = NOW()
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO movies (
                 id, type, title, slug, description, category,
                 mux_asset_id, mux_playback_id, mux_video_id, thumbnail, backdrop_url, trailer,
@@ -186,15 +235,15 @@ export async function POST(request) {
                 ${createdAt}, ${updatedAt}
               )
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
         } else if (table === "series") {
-          const slug = row.slug || `${row.id}`;
+          const slug = seriesSlugMap.get(row.id) || `${row.id}`;
           const createdAt = row.created_at ?? row.createdAt ?? new Date().toISOString();
           const updatedAt = row.updated_at ?? row.updatedAt ?? new Date().toISOString();
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO series (
                 id, type, title, slug, description, category, thumbnail, backdrop_url, trailer,
                 release_year, maturity_rating, status, total_seasons, genres, cast_members, director,
@@ -241,9 +290,9 @@ export async function POST(request) {
                 rating = EXCLUDED.rating,
                 orientation = EXCLUDED.orientation,
                 updated_at = NOW()
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO series (
                 id, type, title, slug, description, category, thumbnail, backdrop_url, trailer,
                 release_year, maturity_rating, status, total_seasons, genres, cast_members, director,
@@ -265,44 +314,63 @@ export async function POST(request) {
                 ${createdAt}, ${updatedAt}
               )
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
         } else if (table === "platform_settings") {
-          const settingsData = row.data && typeof row.data === "object" ? row.data : (() => {
-            const { id: _id, updated_at: _ua, ...rest } = row;
-            return rest;
-          })();
+          const settingsData =
+            row.data && typeof row.data === "object"
+              ? row.data
+              : (() => {
+                  const { id: _id, updated_at: _ua, ...rest } = row;
+                  return rest;
+                })();
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO platform_settings (id, data, updated_at)
               VALUES (${row.id}, ${JSON.stringify(settingsData)}::jsonb, NOW())
               ON CONFLICT (id) DO UPDATE SET
                 data = EXCLUDED.data,
                 updated_at = NOW()
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO platform_settings (id, data, updated_at)
               VALUES (${row.id}, ${JSON.stringify(settingsData)}::jsonb, NOW())
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
         } else if (table === "users") {
           const uid = row.uid || row.id;
           const email = String(row.email || "");
           const displayName = String(row.display_name ?? row.displayName ?? "");
-          const role = String(row.role || "user");
+          const role = String(row.role || CUSTOMER_ROLE);
           const plan = String(row.plan || "free");
-          const isActive = row.is_active !== undefined ? Boolean(row.is_active) : (row.isActive !== undefined ? Boolean(row.isActive) : true);
+          const isActive =
+            row.is_active !== undefined
+              ? Boolean(row.is_active)
+              : row.isActive !== undefined
+              ? Boolean(row.isActive)
+              : true;
           const expiresAt = row.expires_at || row.expiresAt || null;
-          const excludedKeys = new Set(["uid", "id", "email", "display_name", "role", "plan", "is_active", "expires_at", "updated_at"]);
-          const userData = row.data && typeof row.data === "object"
-            ? row.data
-            : Object.fromEntries(Object.entries(row).filter(([k]) => !excludedKeys.has(k)));
+          const excludedKeys = new Set([
+            "uid",
+            "id",
+            "email",
+            "display_name",
+            "role",
+            "plan",
+            "is_active",
+            "expires_at",
+            "updated_at",
+          ]);
+          const userData =
+            row.data && typeof row.data === "object"
+              ? row.data
+              : Object.fromEntries(Object.entries(row).filter(([k]) => !excludedKeys.has(k)));
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO users (uid, email, display_name, role, plan, is_active, expires_at, data, updated_at)
               VALUES (
                 ${uid}, ${email}, ${displayName}, ${role}, ${plan}, ${isActive}, ${expiresAt},
@@ -317,37 +385,44 @@ export async function POST(request) {
                 expires_at = EXCLUDED.expires_at,
                 data = EXCLUDED.data,
                 updated_at = NOW()
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO users (uid, email, display_name, role, plan, is_active, expires_at, data, updated_at)
               VALUES (
                 ${uid}, ${email}, ${displayName}, ${role}, ${plan}, ${isActive}, ${expiresAt},
                 ${JSON.stringify(userData)}::jsonb, NOW()
               )
               ON CONFLICT (uid) DO NOTHING
-            `;
+            `);
           }
+          usersToSync.push({
+            uid,
+            role,
+            plan,
+            disabled: userData?.status === "suspend",
+          });
           summary.push({ table, id: uid });
         } else if (table === "analytics_snapshots") {
           const excludedKeys = new Set(["id", "updated_at"]);
-          const snapshotData = row.data && typeof row.data === "object"
-            ? row.data
-            : Object.fromEntries(Object.entries(row).filter(([k]) => !excludedKeys.has(k)));
+          const snapshotData =
+            row.data && typeof row.data === "object"
+              ? row.data
+              : Object.fromEntries(Object.entries(row).filter(([k]) => !excludedKeys.has(k)));
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO analytics_snapshots (id, data, updated_at)
               VALUES (${row.id}, ${JSON.stringify(snapshotData)}::jsonb, NOW())
               ON CONFLICT (id) DO UPDATE SET
                 data = EXCLUDED.data,
                 updated_at = NOW()
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO analytics_snapshots (id, data, updated_at)
               VALUES (${row.id}, ${JSON.stringify(snapshotData)}::jsonb, NOW())
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
         } else if (table === "audit_logs") {
@@ -355,10 +430,12 @@ export async function POST(request) {
           const action = String(row.action || "");
           const targetId = String(row.target_id ?? row.targetId ?? "");
           const targetType = String(row.target_type ?? row.targetType ?? "");
-          const metadata = JSON.stringify(row.metadata && typeof row.metadata === "object" ? row.metadata : {});
+          const metadata = JSON.stringify(
+            row.metadata && typeof row.metadata === "object" ? row.metadata : {}
+          );
           const createdAt = row.created_at || row.createdAt || new Date().toISOString();
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO audit_logs (id, actor, action, target_id, target_type, metadata, created_at)
               VALUES (${row.id}, ${actorJson}::jsonb, ${action}, ${targetId}, ${targetType}, ${metadata}::jsonb, ${createdAt})
               ON CONFLICT (id) DO UPDATE SET
@@ -368,13 +445,13 @@ export async function POST(request) {
                 target_type = EXCLUDED.target_type,
                 metadata = EXCLUDED.metadata,
                 created_at = EXCLUDED.created_at
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO audit_logs (id, actor, action, target_id, target_type, metadata, created_at)
               VALUES (${row.id}, ${actorJson}::jsonb, ${action}, ${targetId}, ${targetType}, ${metadata}::jsonb, ${createdAt})
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
         } else if (table === "notifications") {
@@ -382,10 +459,12 @@ export async function POST(request) {
           const message = String(row.message ?? row.body ?? "");
           const notifType = String(row.type || "info");
           const read = Boolean(row.read);
-          const metadata = JSON.stringify(row.metadata && typeof row.metadata === "object" ? row.metadata : {});
+          const metadata = JSON.stringify(
+            row.metadata && typeof row.metadata === "object" ? row.metadata : {}
+          );
           const createdAt = row.created_at || row.createdAt || new Date().toISOString();
           if (merge) {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO notifications (id, title, message, type, read, metadata, created_at)
               VALUES (${row.id}, ${title}, ${message}, ${notifType}, ${read}, ${metadata}::jsonb, ${createdAt})
               ON CONFLICT (id) DO UPDATE SET
@@ -395,15 +474,33 @@ export async function POST(request) {
                 read = EXCLUDED.read,
                 metadata = EXCLUDED.metadata,
                 created_at = EXCLUDED.created_at
-            `;
+            `);
           } else {
-            await sql`
+            txQueries.push(sql`
               INSERT INTO notifications (id, title, message, type, read, metadata, created_at)
               VALUES (${row.id}, ${title}, ${message}, ${notifType}, ${read}, ${metadata}::jsonb, ${createdAt})
               ON CONFLICT (id) DO NOTHING
-            `;
+            `);
           }
           summary.push({ table, id: row.id });
+        }
+      }
+
+      if (txQueries.length > 0) {
+        await sql.transaction(txQueries);
+      }
+
+      // Sinkronkan customClaims & status disabled ke Firebase Auth untuk user yang diimpor
+      if (usersToSync.length > 0 && isFirebaseConfigured) {
+        const app = getFirebaseAdminApp();
+        if (app) {
+          const auth = getAuth(app);
+          await Promise.allSettled(
+            usersToSync.map(async (u) => {
+              await auth.setCustomUserClaims(u.uid, { role: u.role, plan: u.plan });
+              await auth.updateUser(u.uid, { disabled: u.disabled });
+            })
+          );
         }
       }
 
@@ -412,13 +509,13 @@ export async function POST(request) {
         action: "tools.import.database",
         targetType: "database",
         metadata: { count: summary.length },
-      });
+      }).catch((err) => console.warn("[import database] audit log failed:", err?.message || err));
       return NextResponse.json({ data: summary });
     }
 
     return NextResponse.json({ error: "Tipe import tidak dikenal." }, { status: 400 });
   } catch (error) {
     console.error("POST /api/tools/import", error);
-    return NextResponse.json({ error: "Gagal melakukan import." }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Gagal melakukan import." }, { status: 500 });
   }
 }

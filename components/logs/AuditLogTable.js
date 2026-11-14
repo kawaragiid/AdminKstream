@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+
+const ACTION_MATCHERS = {
+  create: ["create", "add", "import", "upload"],
+  update: ["update", "edit", "settings", "sync"],
+  delete: ["delete", "remove"],
+  user: ["user", "role", "status", "subscription", "auth"],
+  tools: ["tools", "export", "import"],
+};
 
 const AuditLogTable = ({ initialLogs = [] }) => {
   const [logs, setLogs] = useState(initialLogs);
@@ -8,13 +16,17 @@ const AuditLogTable = ({ initialLogs = [] }) => {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
+  const [selectedLog, setSelectedLog] = useState(null);
 
   const filteredLogs = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (logs ?? []).filter((log) => {
       const actionStr = String(log.action ?? "").toLowerCase();
-      if (actionFilter !== "all" && !actionStr.includes(actionFilter)) {
-        return false;
+      if (actionFilter !== "all") {
+        const keywords = ACTION_MATCHERS[actionFilter] ?? [actionFilter];
+        if (!keywords.some((kw) => actionStr.includes(kw))) {
+          return false;
+        }
       }
       if (!q) return true;
       const hay = [
@@ -49,13 +61,6 @@ const AuditLogTable = ({ initialLogs = [] }) => {
     }
   };
 
-  useEffect(() => {
-    if (!logs?.length) {
-      refreshLogs();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const renderContent = () => {
     if (loading) {
       return <div className="px-4 py-6 text-center text-sm text-slate-400">Memuat audit log...</div>;
@@ -85,11 +90,26 @@ const AuditLogTable = ({ initialLogs = [] }) => {
             </thead>
             <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
               {filteredLogs.map((log) => (
-                <tr key={log.id ?? `${log.action}-${log.createdAt}`}>
+                <tr
+                  key={log.id ?? `${log.action}-${log.createdAt}`}
+                  onClick={() => log.metadata && setSelectedLog(log)}
+                  className={log.metadata ? "cursor-pointer hover:bg-slate-800/40" : ""}
+                >
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-300">{log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}</td>
                   <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-200">
                     <p className="font-medium">{log.action}</p>
-                    {log.metadata && <p className="truncate text-xs text-slate-500" title={JSON.stringify(log.metadata)}>{JSON.stringify(log.metadata)}</p>}
+                    {log.metadata && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLog(log);
+                        }}
+                        className="mt-0.5 max-w-full truncate text-left text-xs text-primary-300 hover:underline"
+                      >
+                        Lihat detail metadata
+                      </button>
+                    )}
                   </td>
                   <td className="max-w-sm truncate px-4 py-4 text-sm text-slate-300">
                     <p>{log.targetType ?? "-"}</p>
@@ -116,7 +136,15 @@ const AuditLogTable = ({ initialLogs = [] }) => {
               <div className="mt-2 space-y-2 text-xs">
                 <p className="truncate"><span className="font-medium text-slate-400">Target:</span> {log.targetType ?? "-"} ({log.targetId ?? "N/A"})</p>
                 <p className="truncate"><span className="font-medium text-slate-400">Admin:</span> {log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
-                {log.metadata && <p className="max-w-full truncate text-slate-500" title={JSON.stringify(log.metadata)}><span className="font-medium text-slate-400">Detail:</span> {JSON.stringify(log.metadata)}</p>}
+                {log.metadata && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLog(log)}
+                    className="rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] font-medium text-primary-300 hover:border-primary-500"
+                  >
+                    Lihat Detail Metadata
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -150,10 +178,11 @@ const AuditLogTable = ({ initialLogs = [] }) => {
           className="rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200"
         >
           <option value="all">Semua Aksi</option>
-          <option value="create">Create</option>
-          <option value="update">Update</option>
+          <option value="create">Create / Import</option>
+          <option value="update">Update / Settings</option>
           <option value="delete">Delete</option>
           <option value="user">User / Role</option>
+          <option value="tools">Tools / Export</option>
         </select>
         <span className="text-xs text-slate-400">{filteredLogs.length} log</span>
       </div>
@@ -161,6 +190,37 @@ const AuditLogTable = ({ initialLogs = [] }) => {
       <div className="rounded-3xl border border-slate-800/60 overflow-hidden">
         {renderContent()}
       </div>
+
+      {selectedLog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setSelectedLog(null)}
+        >
+          <div
+            className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-100">{selectedLog.action}</h3>
+                <p className="text-xs text-slate-400">
+                  {selectedLog.createdAt ? new Date(selectedLog.createdAt).toLocaleString("id-ID") : "-"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="rounded-lg border border-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            <pre className="max-h-80 overflow-auto rounded-xl border border-slate-800 bg-slate-900/80 p-3 text-xs text-slate-200">
+              {JSON.stringify(selectedLog.metadata, null, 2)}
+            </pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

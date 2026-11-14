@@ -35,6 +35,7 @@ const Sidebar = ({ session }) => {
   const pathname = usePathname();
   const role = session?.role ?? ADMIN_ROLES.ADMIN;
   const [expanded, setExpanded] = useState(true);
+  const [mounted, setMounted] = useState(false);
 
   const navigation = useMemo(
     () => ADMIN_NAVIGATION.filter((item) => item.roles.includes(role)),
@@ -58,6 +59,7 @@ const Sidebar = ({ session }) => {
     } catch {
       setExpanded(true);
     }
+    setMounted(true);
   }, []);
 
   const toggleSidebar = () => {
@@ -74,7 +76,9 @@ const Sidebar = ({ session }) => {
 
   return (
     <aside
-      className={`fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl transition-[width] duration-300 ease-in-out md:sticky md:top-0 md:flex md:h-screen md:flex-col md:border-r md:border-t-0 ${
+      className={`fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl md:sticky md:top-0 md:flex md:h-screen md:flex-col md:border-r md:border-t-0 ${
+        mounted ? "transition-[width] duration-300 ease-in-out" : ""
+      } ${
         expanded ? "md:w-64" : "md:w-[76px]"
       }`}
     >
@@ -152,25 +156,35 @@ const Sidebar = ({ session }) => {
       </nav>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="flex items-center gap-1 overflow-x-auto px-2 py-1.5 no-scrollbar md:hidden">
-        {navigation.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition ${
-                isActive
-                  ? "bg-primary-600/20 text-primary-200"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <span className="text-base leading-none">{item.icon}</span>
-              <span>{item.short || item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      <div className="relative md:hidden">
+        <nav
+          aria-label="Navigasi mobile"
+          className="flex items-center gap-1 overflow-x-auto px-3 py-1.5 pr-8 no-scrollbar snap-x"
+        >
+          {navigation.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={isActive ? "page" : undefined}
+                className={`snap-start flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition ${
+                  isActive
+                    ? "bg-primary-600/20 text-primary-200"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span className="text-base leading-none">{item.icon}</span>
+                <span>{item.short || item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-slate-950 to-transparent"
+        />
+      </div>
 
       {/* Footer: Status + Collapse Button (Desktop) */}
       <div className="hidden md:block border-t border-slate-800/70 p-3 space-y-2.5">
@@ -180,20 +194,28 @@ const Sidebar = ({ session }) => {
               <Indicator />
               <span className="truncate">{session?.displayName ?? "Admin"} online</span>
             </div>
-            <p className="mt-1 text-[11px] text-slate-500">
-              Neon • Auth • Mux Basic
-            </p>
           </div>
         )}
         <button
           type="button"
           onClick={toggleSidebar}
+          aria-expanded={expanded}
+          aria-label={expanded ? "Ciutkan sidebar" : "Perluas sidebar"}
           title={expanded ? "Ciutkan Sidebar" : "Perluas Sidebar"}
           className={`flex w-full items-center gap-2.5 rounded-xl border border-slate-800/80 bg-slate-900/50 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:bg-slate-800/80 hover:text-white ${
             !expanded && "justify-center px-0"
           }`}
         >
-          <span className="text-[11px]">{expanded ? "◀" : "▶"}</span>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 transition-transform ${expanded ? "" : "rotate-180"}`}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
           {expanded && <span>Ciutkan Sidebar</span>}
         </button>
       </div>

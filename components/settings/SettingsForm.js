@@ -2,15 +2,47 @@
 
 import { useEffect, useState } from "react";
 
+const defaultSettings = {
+  categories: [],
+  hero: {
+    contentId: "",
+    contentType: "",
+    title: "",
+    subtitle: "",
+    backgroundUrl: "",
+  },
+};
+
+const normalizeSettings = (raw) => ({
+  ...defaultSettings,
+  ...(raw ?? {}),
+  categories: Array.isArray(raw?.categories) ? raw.categories : [],
+  hero: {
+    ...defaultSettings.hero,
+    ...(raw?.hero ?? {}),
+  },
+});
+
+const isValidHttpUrl = (value) => {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return true;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const SettingsForm = ({ initialSettings }) => {
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, setSettings] = useState(() => normalizeSettings(initialSettings));
   const [newCategory, setNewCategory] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
   const [contentItems, setContentItems] = useState([]);
 
   useEffect(() => {
-    if (initialSettings) setSettings(initialSettings);
+    if (initialSettings) setSettings(normalizeSettings(initialSettings));
   }, [initialSettings]);
 
   useEffect(() => {
@@ -22,25 +54,33 @@ const SettingsForm = ({ initialSettings }) => {
       .catch(() => {});
   }, []);
 
-  const handleSelectHeroContent = (contentId) => {
-    if (!contentId) {
+  const handleSelectHeroContent = (selectedValue) => {
+    if (!selectedValue) {
       setSettings((prev) => ({
         ...prev,
         hero: {
           ...prev.hero,
           contentId: "",
+          contentType: "",
           title: "",
           backgroundUrl: "",
         },
       }));
       return;
     }
-    const picked = contentItems.find((item) => item.id === contentId);
+    const [pickedType, ...rest] = selectedValue.includes(":")
+      ? selectedValue.split(":")
+      : ["", selectedValue];
+    const pickedId = rest.join(":");
+    const picked = contentItems.find((item) =>
+      pickedType ? item.type === pickedType && item.id === pickedId : item.id === pickedId
+    );
     setSettings((prev) => ({
       ...prev,
       hero: {
         ...prev.hero,
-        contentId,
+        contentId: pickedId,
+        contentType: picked?.type ?? pickedType ?? "",
         title: picked ? picked.title || "" : prev.hero?.title || "",
         backgroundUrl: picked ? picked.backdropUrl || picked.thumbnail || "" : prev.hero?.backgroundUrl || "",
       },
@@ -75,8 +115,15 @@ const SettingsForm = ({ initialSettings }) => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setSaving(true);
     setMessage(null);
+    if (!isValidHttpUrl(settings.hero?.backgroundUrl)) {
+      setMessage({
+        type: "error",
+        text: "Background URL Hero harus berupa URL http:// atau https:// yang valid.",
+      });
+      return;
+    }
+    setSaving(true);
 
     try {
       const response = await fetch("/api/settings", {
@@ -126,10 +173,10 @@ const SettingsForm = ({ initialSettings }) => {
             placeholder="Tambah kategori"
             className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200"
           />
-          <button // Tombol tambah dibuat full-width di mobile
+          <button
             type="button"
             onClick={addCategory}
-            className="rounded-full bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500"
+            className="w-full sm:w-auto rounded-full bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500"
           >
             Tambah
           </button>
@@ -143,13 +190,19 @@ const SettingsForm = ({ initialSettings }) => {
           <label className="text-sm text-slate-300 md:col-span-2">
             Pilih Konten Unggulan (Otomatis isi ID, Judul &amp; Background)
             <select
-              value={settings.hero?.contentId ?? ""}
+              value={
+                settings.hero?.contentType && settings.hero?.contentId
+                  ? `${settings.hero.contentType}:${settings.hero.contentId}`
+                  : contentItems.find((item) => item.id === settings.hero?.contentId)
+                  ? `${contentItems.find((item) => item.id === settings.hero?.contentId).type}:${settings.hero.contentId}`
+                  : ""
+              }
               onChange={(e) => handleSelectHeroContent(e.target.value)}
               className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
             >
               <option value="">-- Pilih Movie / Series --</option>
               {contentItems.map((item) => (
-                <option key={`${item.type}-${item.id}`} value={item.id}>
+                <option key={`${item.type}-${item.id}`} value={`${item.type}:${item.id}`}>
                   [{item.type === "series" ? "Series" : "Movie"}] {item.title}
                 </option>
               ))}

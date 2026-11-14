@@ -22,33 +22,49 @@ export async function GET() {
     return NextResponse.json({ data: session });
   }
 
-  await ensureNeonSchema();
-  const sql = getSql();
-  const rows = await sql`SELECT display_name, data FROM users WHERE uid = ${session.uid} LIMIT 1`;
-  const row = rows[0] || {};
-  const data = row.data && typeof row.data === "object" ? row.data : {};
+  try {
+    await ensureNeonSchema();
+    const sql = getSql();
+    const rows = await sql`SELECT display_name, data FROM users WHERE uid = ${session.uid} LIMIT 1`;
+    const row = rows[0] || {};
+    const data = row.data && typeof row.data === "object" ? row.data : {};
 
-  return NextResponse.json({
-    data: {
-      displayName: row.display_name || data.displayName || session.displayName,
-      photoURL: data.photoURL ?? data.photoUrl ?? session.photoURL ?? null,
-      tagline: data.tagline ?? null,
-    },
-  });
+    return NextResponse.json({
+      data: {
+        displayName: row.display_name || data.displayName || session.displayName,
+        photoURL: data.photoURL ?? data.photoUrl ?? session.photoURL ?? null,
+        tagline: data.tagline ?? null,
+      },
+    });
+  } catch (error) {
+    console.error("GET /api/users/me", error);
+    return NextResponse.json({ error: "Gagal memuat profil pengguna." }, { status: 500 });
+  }
 }
 
 export async function PUT(request) {
   const { session, error: authError } = await requireRole();
   if (authError) return authError;
   try {
-    const body = await request.json();
-    const displayName = typeof body?.displayName === "string" ? body.displayName.trim().slice(0, 100) || null : null;
-    const photoURL = body?.photoURL ? sanitizePhotoUrl(body.photoURL) : null;
-    if (body?.photoURL && !photoURL) {
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Body JSON tidak valid." }, { status: 400 });
+    }
+
+    const displayName = typeof body.displayName === "string" ? body.displayName.trim().slice(0, 100) : "";
+    if (!displayName) {
+      return NextResponse.json({ error: "Nama tampilan wajib diisi." }, { status: 400 });
+    }
+
+    const rawPhoto = body.photoURL;
+    const isClearingPhoto = rawPhoto === null || rawPhoto === "";
+    const photoURL = isClearingPhoto ? null : sanitizePhotoUrl(rawPhoto);
+    if (!isClearingPhoto && !photoURL) {
       return NextResponse.json({ error: "URL foto profil tidak valid." }, { status: 400 });
     }
-    const hasTagline = body?.tagline !== undefined;
-    const tagline = typeof body?.tagline === "string" ? body.tagline.trim().slice(0, 200) || null : null;
+
+    const hasTagline = body.tagline !== undefined;
+    const tagline = typeof body.tagline === "string" ? body.tagline.trim().slice(0, 200) || null : null;
 
     if (!isNeonConfigured()) {
       return NextResponse.json({
@@ -65,7 +81,7 @@ export async function PUT(request) {
     const existingData = existingRow.data && typeof existingRow.data === "object" ? existingRow.data : {};
     const nextData = {
       ...existingData,
-      displayName: displayName ?? "",
+      displayName,
       photoURL: photoURL ?? null,
       photoUrl: photoURL ?? null,
       ...(hasTagline ? { tagline } : {}),
@@ -76,7 +92,7 @@ export async function PUT(request) {
       VALUES (
         ${session.uid},
         ${existingRow.email || session.email || ""},
-        ${displayName || ""},
+        ${displayName},
         ${existingRow.role || session.role || "admin"},
         ${existingRow.plan || session.plan || "free"},
         ${existingRow.is_active ?? true},
@@ -91,12 +107,14 @@ export async function PUT(request) {
 
     const app = getFirebaseAdminApp();
     if (app) {
-      await getAuth(app)
-        .updateUser(session.uid, {
+      try {
+        await getAuth(app).updateUser(session.uid, {
           displayName,
-          ...(photoURL ? { photoURL } : {}),
-        })
-        .catch(() => {});
+          photoURL: photoURL ?? null,
+        });
+      } catch (fbError) {
+        console.warn("[PUT /api/users/me] Firebase updateUser failed:", fbError?.message || fbError);
+      }
     }
 
     return NextResponse.json({
@@ -111,4 +129,3 @@ export async function PUT(request) {
     return NextResponse.json({ error: error.message || "Gagal memperbarui profil." }, { status: 500 });
   }
 }
-

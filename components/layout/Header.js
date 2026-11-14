@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ADMIN_NAVIGATION, ADMIN_ROLES } from "@/utils/constants";
@@ -7,7 +8,8 @@ import LogoutButton from "./LogoutButton";
 
 const Header = ({ session }) => {
   const pathname = usePathname();
-  const role = session?.role ?? ADMIN_ROLES.EDITOR;
+  const [avatarError, setAvatarError] = useState(false);
+  const role = session?.role ?? ADMIN_ROLES.ADMIN;
   const navigation = ADMIN_NAVIGATION.filter((item) => item.roles.includes(role));
   const activePage = navigation.find((item) => item.href === pathname);
   const pageTitle = pathname?.startsWith("/profile")
@@ -50,15 +52,16 @@ const Header = ({ session }) => {
           title="Pengaturan Profil"
           className="flex items-center gap-2.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-sm transition hover:border-slate-700"
         >
-          {session?.photoURL ? (
+          {session?.photoURL && !avatarError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={session.photoURL}
               alt={session.displayName || "Admin"}
-              className="h-9 w-9 rounded-full object-cover"
+              onError={() => setAvatarError(true)}
+              className="h-8 w-8 rounded-full object-cover"
             />
           ) : (
-            <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
               {session?.displayName ? session.displayName.slice(0, 2).toUpperCase() : "AK"}
             </span>
           )}

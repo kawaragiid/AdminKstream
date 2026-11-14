@@ -8,7 +8,7 @@ export const metadata = {
 
 export default async function LoginPage({ searchParams }) {
   const session = await getSessionUser();
-  if (session) {
+  if (session && session.status !== "suspend") {
     redirect("/");
   }
 

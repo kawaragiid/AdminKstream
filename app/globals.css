@@ -1,12 +1,12 @@
+@import "../styles/custom.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import "../styles/custom.css";
-
 :root {
   color-scheme: dark;
-  --color-background: #0f172a;
+  --color-background: #020617;
   --color-surface: #111827;
   --color-surface-muted: #1f2937;
   --color-border: rgba(148, 163, 184, 0.2);
@@ -15,11 +15,26 @@
   --sidebar-width: 272px;
 }
 
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(59, 130, 246, 0.45) rgba(15, 23, 42, 0.6);
+}
+
 html,
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
   min-height: 100%;
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 body {

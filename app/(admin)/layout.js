@@ -17,9 +17,9 @@ export default async function AdminLayout({ children }) {
   return (
     <div className="flex min-h-screen bg-slate-950">
       <Sidebar session={session} />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header session={session} />
-        <main className="flex-1 overflow-y-auto bg-slate-950 p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
+        <main className="flex-1 bg-slate-950 p-4 sm:p-6 lg:p-8 pb-24 md:pb-8">
           <div className="mx-auto max-w-[1600px]">{children}</div>
         </main>
       </div>

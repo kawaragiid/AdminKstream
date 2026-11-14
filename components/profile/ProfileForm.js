@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function ProfileForm() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [photoURL, setPhotoURL] = useState('');
+  const [avatarError, setAvatarError] = useState(false);
   const [message, setMessage] = useState(null);
 
   useEffect(() => {
@@ -30,18 +33,26 @@ export default function ProfileForm() {
   }, []);
 
   const handleSave = async () => {
+    const trimmedName = displayName.trim();
+    if (!trimmedName) {
+      setMessage({ type: 'error', text: 'Nama tampilan tidak boleh kosong.' });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
       const res = await fetch('/api/users/me', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName, photoURL }),
+        body: JSON.stringify({ displayName: trimmedName, photoURL: photoURL.trim() }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Gagal menyimpan profil');
       setMessage({ type: 'success', text: 'Profil berhasil diperbarui.' });
-      setPhotoURL(json?.data?.photoURL || photoURL);
+      setDisplayName(trimmedName);
+      setPhotoURL(json?.data?.photoURL || photoURL.trim());
+      setAvatarError(false);
+      router.refresh();
     } catch (e) {
       setMessage({ type: 'error', text: e.message });
     } finally {
@@ -61,7 +72,12 @@ export default function ProfileForm() {
     >
       <div className="flex items-center gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={photoURL || '/logo.png'} alt="avatar" className="h-16 w-16 rounded-full object-cover border border-slate-800" />
+        <img
+          src={(!avatarError && photoURL.trim()) || '/logo.png'}
+          alt="avatar"
+          onError={() => setAvatarError(true)}
+          className="h-16 w-16 rounded-full object-cover border border-slate-800"
+        />
         <div className="space-y-1 text-xs text-slate-400">
           <p className="font-medium text-slate-300">Avatar Profil</p>
           <p>Gunakan URL gambar (https://) atau foto bawaan akun Google Anda.</p>
@@ -70,12 +86,25 @@ export default function ProfileForm() {
 
       <label className="block text-sm text-slate-300">
         Nama Tampilan
-        <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          required
+          className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+        />
       </label>
 
       <label className="block text-sm text-slate-300">
         URL Foto Profil (opsional)
-        <input value={photoURL} onChange={(e) => setPhotoURL(e.target.value)} placeholder="https://..." className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+        <input
+          value={photoURL}
+          onChange={(e) => {
+            setAvatarError(false);
+            setPhotoURL(e.target.value);
+          }}
+          placeholder="https://..."
+          className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+        />
       </label>
 
       {message && (

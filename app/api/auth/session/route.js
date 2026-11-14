@@ -1,26 +1,35 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getAuth } from "firebase-admin/auth";
-import { getFirebaseAdminApp } from "@/lib/firebase";
 import {
+  ALLOWED_ADMIN_ROLES,
   SESSION_COOKIE_NAME,
   clearSessionCookie,
   commitSessionCookie,
   createSession,
   getSessionUserFromCookie,
-  verifySessionCookieValue,
+  verifySameOrigin,
 } from "@/lib/session";
 
 export async function POST(request) {
   try {
-    const body = await request.json();
-    if (!body?.idToken) {
+    if (!verifySameOrigin(request)) {
+      return NextResponse.json({ error: "Forbidden origin." }, { status: 403 });
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Format JSON tidak valid." }, { status: 400 });
+    }
+
+    if (!body?.idToken || typeof body.idToken !== "string") {
       return NextResponse.json({ error: "Token tidak ditemukan." }, { status: 400 });
     }
 
     const { cookie, user, maxAge } = await createSession(body.idToken);
 
-    if (!user || !["super-admin", "admin", "editor"].includes(user.role)) {
+    if (!user || !ALLOWED_ADMIN_ROLES.includes(user.role)) {
       return NextResponse.json(
         { error: "Akun tidak memiliki akses ke dashboard admin." },
         { status: 403 }
@@ -32,11 +41,17 @@ export async function POST(request) {
     return NextResponse.json({ data: user });
   } catch (error) {
     console.error("POST /api/auth/session", error);
-    const isSuspended = error?.statusCode === 403 || error.message?.includes("ditangguhkan");
+    const isForbidden = error?.statusCode === 403 || error.message?.includes("ditangguhkan");
     const isAuthError = typeof error?.code === "string" && error.code.startsWith("auth/");
     return NextResponse.json(
-      { error: isSuspended ? (error.message || "Akun admin sedang ditangguhkan.") : isAuthError ? "Token sesi tidak valid atau kedaluwarsa." : "Gagal membuat sesi." },
-      { status: isSuspended ? 403 : isAuthError ? 401 : 500 }
+      {
+        error: isForbidden
+          ? error.message || "Akun tidak memiliki akses."
+          : isAuthError
+          ? "Token sesi tidak valid atau kedaluwarsa."
+          : "Gagal membuat sesi.",
+      },
+      { status: isForbidden ? 403 : isAuthError ? 401 : 500 }
     );
   }
 }
@@ -57,28 +72,16 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
   try {
-    const cookieStore = await cookies();
-    const cookieValue = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-
-    if (cookieValue) {
-      try {
-        const decoded = await verifySessionCookieValue(cookieValue);
-        if (decoded) {
-          const auth = getAuth(getFirebaseAdminApp());
-          await auth.revokeRefreshTokens(decoded.sub ?? decoded.uid);
-        }
-      } catch (revokeError) {
-        console.warn("DELETE /api/auth/session revokeRefreshTokens failed:", revokeError?.message || revokeError);
-      }
+    if (!verifySameOrigin(request)) {
+      return NextResponse.json({ error: "Forbidden origin." }, { status: 403 });
     }
 
+    await clearSessionCookie();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/auth/session", error);
     return NextResponse.json({ error: "Gagal menghapus sesi." }, { status: 500 });
-  } finally {
-    await clearSessionCookie().catch(() => {});
   }
 }

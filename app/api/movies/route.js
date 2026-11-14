@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listMovies, createMovie } from "@/lib/firestoreService";
-import { normalizeMuxMetadata, updateAssetMetadata } from "@/lib/muxService";
+import { isMuxConfigured, normalizeMuxMetadata, signMediaItemMuxUrls, updateAssetMetadata } from "@/lib/muxService";
 import { validateMoviePayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -13,11 +13,13 @@ export async function GET(request) {
   const filters = {
     search: searchParams.get("search") ?? searchParams.get("q") ?? "",
     category: searchParams.get("category") ?? "",
+    limit: searchParams.get("limit") ?? undefined,
+    offset: searchParams.get("offset") ?? undefined,
   };
 
   try {
     const movies = await listMovies(filters);
-    return NextResponse.json({ data: movies });
+    return NextResponse.json({ data: movies.map(signMediaItemMuxUrls) });
   } catch (error) {
     console.error("GET /api/movies", error);
     return NextResponse.json({ error: "Gagal memuat movie." }, { status: 500 });
@@ -29,12 +31,11 @@ export async function POST(request) {
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }
 
-    // Validasi payload sebelum memanggil Mux API agar typo validasi tidak memicu side effect ke Mux.
     const { valid, errors } = validateMoviePayload(payload);
     if (!valid) {
       return NextResponse.json({ error: "Validasi gagal.", details: errors }, { status: 422 });
@@ -45,6 +46,13 @@ export async function POST(request) {
       playbackId: payload.mux_playback_id,
       videoId: payload.mux_video_id,
     });
+    if (isMuxConfigured && !muxInfo.assetId) {
+      return NextResponse.json(
+        { error: "Asset Mux tidak ditemukan atau belum valid. Periksa Playback/Asset ID." },
+        { status: 422 }
+      );
+    }
+
     payload.mux_asset_id = muxInfo.assetId;
     payload.mux_playback_id = muxInfo.playbackId;
     payload.mux_video_id = muxInfo.videoId;
@@ -56,6 +64,9 @@ export async function POST(request) {
     try {
       created = await createMovie(payload, session);
     } catch (dbError) {
+      if (dbError?.statusCode === 400) {
+        return NextResponse.json({ error: dbError.message }, { status: 400 });
+      }
       const orphanedAssetId = payload.mux_asset_id || null;
       const cleanupGuidance = orphanedAssetId
         ? `DB write gagal setelah asset Mux (${orphanedAssetId}) ditautkan. Jika asset tersebut baru diunggah dan tidak dipakai konten lain, bersihkan melalui DELETE /api/mux/assets/${orphanedAssetId} atau dashboard Mux.`
@@ -87,9 +98,9 @@ export async function POST(request) {
       targetId: created.id,
       targetType: "movie",
       metadata: { title: created.title },
-    });
+    }).catch((err) => console.warn("[POST /api/movies] audit log failed:", err?.message || err));
 
-    return NextResponse.json({ data: created }, { status: 201 });
+    return NextResponse.json({ data: signMediaItemMuxUrls(created) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/movies", error);
     return NextResponse.json({ error: "Gagal membuat movie." }, { status: 500 });

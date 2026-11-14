@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 const typeStyles = {
   success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
@@ -104,13 +104,6 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
     }
   };
 
-  useEffect(() => {
-    if (!notifications?.length) {
-      refresh();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -167,7 +160,7 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
 
       <div className="space-y-4">
         {visibleNotifications.map((notif) => (
-          <div key={notif.id} className={`rounded-3xl border px-5 py-4 ${typeStyles[notif.type ?? "info"]}`}>
+          <div key={notif.id} className={`rounded-3xl border px-5 py-4 ${typeStyles[notif.type] ?? typeStyles.info}`}>
             <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
               <div>
                 <p className="text-sm font-semibold">{notif.title}</p>

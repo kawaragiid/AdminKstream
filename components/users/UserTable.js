@@ -172,7 +172,11 @@ const UserTable = ({ initialUsers = [] }) => {
       }
       setError(null);
       setNotice(`Akun ${result.data?.email ?? ""} berhasil dibuat.`);
-      setUsers((prev) => [result.data, ...prev]);
+      if (result?.data) {
+        setUsers((prev) => [result.data, ...prev]);
+      } else {
+        await refreshUsers();
+      }
       setShowCreate(false);
       setCreateForm({ email: "", password: "", displayName: "", role: ADMIN_ROLES.ADMIN });
     } catch (err) {
@@ -466,7 +470,8 @@ const UserTable = ({ initialUsers = [] }) => {
             return (
               <div
                 key={`${user.uid}-mobile`}
-                className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3"
+                onClick={() => openUserDrawer(user)}
+                className="cursor-pointer rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3 transition hover:border-slate-700"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -490,14 +495,27 @@ const UserTable = ({ initialUsers = [] }) => {
                     {isSuspended ? "Suspended" : "Aktif"}
                   </span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>
-                    {user.role} • {user.plan}
-                  </span>
+                <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
+                  <div className="min-w-0">
+                    <p>
+                      {user.role} • {user.plan}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      Masa aktif:{" "}
+                      {user.expiresAt
+                        ? new Date(user.expiresAt).toLocaleDateString("id-ID")
+                        : user.isActive
+                        ? "Aktif (tanpa batas)"
+                        : "Nonaktif"}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => openUserDrawer(user)}
-                    className="rounded-lg border border-slate-700 px-3 py-1 font-semibold text-slate-200"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openUserDrawer(user);
+                    }}
+                    className="shrink-0 rounded-lg border border-slate-700 px-3 py-1 font-semibold text-slate-200"
                   >
                     Kelola
                   </button>
@@ -539,6 +557,12 @@ const UserTable = ({ initialUsers = [] }) => {
                 ✕
               </button>
             </header>
+
+            {error && (
+              <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+                {error}
+              </div>
+            )}
 
             {notice && (
               <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3.5 py-2.5 text-xs text-emerald-200">
@@ -712,6 +736,11 @@ const UserTable = ({ initialUsers = [] }) => {
                 ✕
               </button>
             </div>
+            {error && (
+              <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+                {error}
+              </div>
+            )}
             <label className="block text-xs font-medium text-slate-300">
               Nama Tampilan
               <input

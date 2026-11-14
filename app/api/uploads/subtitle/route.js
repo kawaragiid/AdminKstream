@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/session";
 import { purgeExpiredTempSubtitles, resolvePublicBaseUrl, saveTempSubtitle } from "@/lib/tempSubtitles";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
-const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB (file mentah & hasil konversi)
+const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_SUBTITLE_MIME = new Set([
   "text/vtt",
   "text/plain",
@@ -18,8 +18,26 @@ function sanitizeSubtitleName(rawName) {
   return String(rawName || `subtitle-${Date.now()}.vtt`).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-// Upload subtitle TANPA Firebase Storage: teks VTT disimpan sementara di Postgres/memori,
-// lalu disajikan via URL publik bertoken agar bisa diambil Mux (lihat lib/tempSubtitles.js).
+function decodeSubtitleBuffer(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return new TextDecoder("utf-16le").decode(buffer.subarray(2));
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return new TextDecoder("utf-16be").decode(buffer.subarray(2));
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("windows-1252").decode(buffer);
+  }
+}
+
+function isValidWebVttContent(text) {
+  const trimmed = text.trimStart();
+  if (!/^WEBVTT(?:\s|$)/i.test(trimmed)) return false;
+  return trimmed.includes("-->");
+}
+
 export async function POST(request) {
   const { session, error: authError } = await requireRole();
   if (authError) return authError;
@@ -49,13 +67,20 @@ export async function POST(request) {
       return NextResponse.json({ error: "Ukuran file subtitle maksimal 5 MB." }, { status: 413 });
     }
 
-    const rawText = rawBuffer.toString("utf-8").replace(/^\uFEFF/, "");
-    if (rawBuffer.includes(0) || rawText.includes("\0")) {
+    const rawText = decodeSubtitleBuffer(rawBuffer).replace(/^\uFEFF/, "");
+    if (rawText.includes("\0")) {
       return NextResponse.json({ error: "File biner tidak diizinkan sebagai subtitle." }, { status: 400 });
     }
 
-    const isVtt = /^WEBVTT/i.test(rawText.trimStart());
+    const isVtt = /^WEBVTT(?:\s|$)/i.test(rawText.trimStart());
+    if (isVtt && !isValidWebVttContent(rawText)) {
+      return NextResponse.json({ error: "File WebVTT tidak memiliki cue timestamp yang valid." }, { status: 400 });
+    }
+
     const vtt = isVtt ? rawText : convertSrtToVtt(rawText);
+    if (!vtt.includes("-->")) {
+      return NextResponse.json({ error: "Subtitle tidak memiliki cue timestamp yang valid." }, { status: 400 });
+    }
     if (Buffer.byteLength(vtt, "utf-8") > MAX_SUBTITLE_BYTES) {
       return NextResponse.json({ error: "Ukuran subtitle melebihi batas maksimal 5 MB." }, { status: 413 });
     }

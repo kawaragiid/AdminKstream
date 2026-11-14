@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ADMIN_ROLES, CONTENT_CATEGORIES, CONTENT_TYPES } from "@/utils/constants";
 import MovieForm from "@/components/upload/MovieForm";
 import SeriesForm from "@/components/upload/SeriesForm";
+import MuxThumbnail from "@/components/mux/MuxThumbnail";
 
 const filtersDefault = {
   search: "",
@@ -28,6 +29,17 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [viewMode, setViewMode] = useState("list");
   const [activeSeason, setActiveSeason] = useState(1);
+  const [confirmCloseDrawer, setConfirmCloseDrawer] = useState(false);
+  const [deletingEpisodeId, setDeletingEpisodeId] = useState(null);
+  const fetchAbortRef = useRef(null);
+  const detailAbortRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      fetchAbortRef.current?.abort();
+      detailAbortRef.current?.abort();
+    };
+  }, []);
 
   const seriesSeasonData = useMemo(() => {
     if (!selectedItem || selectedItem.type !== CONTENT_TYPES.SERIES) {
@@ -94,23 +106,44 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     return { label: "Tanpa Asset", cls: "border-amber-500/30 bg-amber-500/10 text-amber-300" };
   };
 
+  const typeCounts = useMemo(() => {
+    let movie = 0;
+    let series = 0;
+    for (const item of items) {
+      if (item.type === CONTENT_TYPES.MOVIE) movie += 1;
+      else if (item.type === CONTENT_TYPES.SERIES) series += 1;
+    }
+    return { total: items.length, movie, series };
+  }, [items]);
+
   const fetchData = async (activeFilters = filters) => {
+    fetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (activeFilters.search) params.set("search", activeFilters.search);
       if (activeFilters.category) params.set("category", activeFilters.category);
-      const response = await fetch(`/api/content${params.toString() ? `?${params.toString()}` : ""}`);
+      const response = await fetch(`/api/content${params.toString() ? `?${params.toString()}` : ""}`, {
+        signal: controller.signal,
+      });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error ?? "Gagal memuat konten");
       }
-      setItems(result.data ?? []);
-      setError(null);
+      if (!controller.signal.aborted) {
+        setItems(result.data ?? []);
+        setError(null);
+      }
     } catch (err) {
+      if (err?.name === "AbortError" || controller.signal.aborted) return;
       setError(err.message ?? "Gagal memuat konten.");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   };
 
@@ -160,6 +193,11 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   };
 
   const openDetails = async (item) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
+
+    setConfirmCloseDrawer(false);
     setSelectedItem(item);
     setEditMode(null);
     setDetailError(null);
@@ -168,22 +206,27 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     setMuxError(null);
 
     const targetId = item.id;
+    const targetType = item.type;
 
     try {
       const endpoint = item.type === CONTENT_TYPES.MOVIE ? `/api/movies/${item.id}` : `/api/series/${item.id}`;
-      const response = await fetch(endpoint);
+      const response = await fetch(endpoint, { signal: controller.signal });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(json?.error ?? "Gagal memuat detail konten.");
       }
+      if (controller.signal.aborted) return;
       setSelectedItem((prev) => {
-        if (!prev || prev.id !== targetId) return prev;
+        if (!prev || prev.id !== targetId || prev.type !== targetType) return prev;
         return { ...prev, ...json.data };
       });
     } catch (err) {
+      if (err?.name === "AbortError" || controller.signal.aborted) return;
       setDetailError(err?.message ?? "Gagal memuat detail konten.");
     } finally {
-      setDetailLoading(false);
+      if (!controller.signal.aborted) {
+        setDetailLoading(false);
+      }
     }
   };
 
@@ -275,6 +318,8 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   }, [selectedItem, detailLoading]);
 
   const closeDrawer = () => {
+    detailAbortRef.current?.abort();
+    setConfirmCloseDrawer(false);
     setSelectedItem(null);
     setEditMode(null);
     setDetailError(null);
@@ -282,6 +327,39 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     setMuxDetails(null);
     setMuxError(null);
     setMuxLoading(false);
+  };
+
+  const requestCloseDrawer = () => {
+    if (editMode) {
+      setConfirmCloseDrawer(true);
+      return;
+    }
+    closeDrawer();
+  };
+
+  const handleQuickDeleteEpisode = async (episode) => {
+    if (!canDelete || !selectedItem?.id) return;
+    const epId = episode?.episodeId ?? episode?.id;
+    if (!epId) return;
+    setDeletingEpisodeId(epId);
+    setDetailError(null);
+    try {
+      const res = await fetch(`/api/series/${selectedItem.id}/episodes/${epId}`, { method: "DELETE" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "Gagal menghapus episode.");
+      setSelectedItem((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          episodes: (prev.episodes ?? []).filter((ep) => (ep.episodeId ?? ep.id) !== epId),
+        };
+      });
+      await fetchData();
+    } catch (err) {
+      setDetailError(err?.message ?? "Gagal menghapus episode.");
+    } finally {
+      setDeletingEpisodeId(null);
+    }
   };
 
   return (
@@ -310,9 +388,9 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
               onChange={(event) => setTypeFilter(event.target.value)}
               className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200 focus:border-primary-500 focus:outline-none"
             >
-              <option value="all">Semua ({items.length})</option>
-              <option value={CONTENT_TYPES.MOVIE}>Movie</option>
-              <option value={CONTENT_TYPES.SERIES}>Series</option>
+              <option value="all">Semua ({typeCounts.total})</option>
+              <option value={CONTENT_TYPES.MOVIE}>Movie ({typeCounts.movie})</option>
+              <option value={CONTENT_TYPES.SERIES}>Series ({typeCounts.series})</option>
             </select>
           </label>
 
@@ -419,18 +497,19 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                       >
                         <td className="px-5 py-3.5 text-sm font-medium text-slate-100">
                           <div className="flex items-center gap-3">
-                            {item.thumbnail ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
+                            <div className="h-10 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                              <MuxThumbnail
                                 src={item.thumbnail}
+                                playbackId={item.mux_playback_id || item.muxPlaybackId || item.mux_video_id}
                                 alt={item.title}
-                                className="h-10 w-14 shrink-0 rounded-lg border border-slate-800 object-cover"
+                                className="h-10 w-14 object-cover"
+                                fallback={
+                                  <div className="flex h-10 w-14 items-center justify-center text-xs text-slate-500">
+                                    🎬
+                                  </div>
+                                }
                               />
-                            ) : (
-                              <div className="flex h-10 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-xs text-slate-500">
-                                🎬
-                              </div>
-                            )}
+                            </div>
                             <span className="line-clamp-1">{item.title}</span>
                           </div>
                         </td>
@@ -538,19 +617,18 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                   onClick={() => openDetails(item)}
                   className="group cursor-pointer overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/60 transition hover:border-primary-500/40"
                 >
-                  <div className="relative aspect-video w-full bg-slate-900">
-                    {item.thumbnail ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.thumbnail}
-                        alt={item.title}
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-2xl text-slate-600">
-                        🎬
-                      </div>
-                    )}
+                  <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
+                    <MuxThumbnail
+                      src={item.thumbnail}
+                      playbackId={item.mux_playback_id || item.muxPlaybackId || item.mux_video_id}
+                      alt={item.title}
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                      fallback={
+                        <div className="flex h-full w-full items-center justify-center text-2xl text-slate-600">
+                          🎬
+                        </div>
+                      }
+                    />
                     <span className={`absolute right-2 top-2 rounded-full border px-2 py-0.5 text-[10px] font-semibold backdrop-blur-md ${badge.cls}`}>
                       {badge.label}
                     </span>
@@ -603,7 +681,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
       {selectedItem && (
         <div
           className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm"
-          onClick={closeDrawer}
+          onClick={requestCloseDrawer}
         >
           <div
             className={`relative h-full w-full overflow-y-auto border-l border-slate-800 bg-slate-950 p-6 shadow-2xl ${
@@ -611,6 +689,30 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
             }`}
             onClick={(e) => e.stopPropagation()}
           >
+            {confirmCloseDrawer && (
+              <div
+                role="alert"
+                className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
+              >
+                <span>Mode edit sedang aktif. Tutup drawer akan membuang perubahan yang belum disimpan.</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={closeDrawer}
+                    className="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-500"
+                  >
+                    Tetap Tutup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCloseDrawer(false)}
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 font-medium text-slate-200 hover:bg-slate-800"
+                  >
+                    Lanjut Edit
+                  </button>
+                </div>
+              </div>
+            )}
             {!editMode && (
               <div className="space-y-5">
                 <header className="flex items-start justify-between gap-4 border-b border-slate-800/80 pb-4">
@@ -638,13 +740,15 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                 {detailLoading && <p className="text-xs text-slate-400">Memuat detail terbaru...</p>}
                 {detailError && <p className="text-xs text-rose-400">{detailError}</p>}
 
-                {selectedItem.thumbnail && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={selectedItem.thumbnail}
-                    alt={selectedItem.title}
-                    className="aspect-video w-full rounded-xl border border-slate-800 object-cover"
-                  />
+                {(selectedItem.thumbnail || selectedItem.mux_playback_id || selectedItem.mux_video_id) && (
+                  <div className="aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                    <MuxThumbnail
+                      src={selectedItem.thumbnail}
+                      playbackId={selectedItem.mux_playback_id || selectedItem.muxPlaybackId || selectedItem.mux_video_id}
+                      alt={selectedItem.title}
+                      className="aspect-video w-full object-cover"
+                    />
+                  </div>
                 )}
 
                 <p className="whitespace-pre-line text-sm leading-relaxed text-slate-300">
@@ -705,11 +809,12 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1 text-xs">
                       {(seriesSeasonData.episodesBySeason[activeSeason] ?? []).map((episode) => {
                         const epNo = episode.epNumber ?? episode.episodeNumber ?? 0;
+                        const epId = episode.episodeId ?? episode.id;
                         const epPlayback = episode.mux_playback_id || episode.muxPlaybackId || episode.mux_video_id;
                         return (
                           <div
-                            key={episode.episodeId ?? episode.id ?? `${activeSeason}-${epNo}`}
-                            className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 space-y-1"
+                            key={epId ?? `${activeSeason}-${epNo}`}
+                            className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 space-y-1.5"
                           >
                             <div className="flex items-center justify-between gap-2">
                               <p className="font-semibold text-slate-100">
@@ -722,12 +827,33 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                                     : "bg-amber-500/15 text-amber-300"
                                 }`}
                               >
-                                {epPlayback ? "Ready" : "Belum Tersedia"}
+                                {epPlayback ? "Mux Ready" : "Belum Tersedia"}
                               </span>
                             </div>
-                            <p className="break-all text-[11px] text-slate-400">
-                              Playback ID: {epPlayback || "-"}
-                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="break-all text-[11px] text-slate-400">
+                                Playback ID: {epPlayback || "-"}
+                              </p>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditMode(CONTENT_TYPES.SERIES)}
+                                  className="rounded-lg border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-200 hover:border-primary-500"
+                                >
+                                  Edit
+                                </button>
+                                {canDelete && epId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleQuickDeleteEpisode(episode)}
+                                    disabled={deletingEpisodeId === epId}
+                                    className="rounded-lg border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                                  >
+                                    {deletingEpisodeId === epId ? "Menghapus..." : "Hapus"}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         );
                       })}

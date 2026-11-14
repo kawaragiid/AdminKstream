@@ -1,13 +1,16 @@
 "use client";
 
 const AudienceSplitPie = ({ split }) => {
-  const freeCount = Number(split?.free ?? 0);
-  const premiumCount = Number(split?.premium ?? 0);
+  const freeCount = Math.max(0, Number(split?.free ?? 0) || 0);
+  const premiumCount = Math.max(0, Number(split?.premium ?? 0) || 0);
   const total = freeCount + premiumCount;
-  const freePct = total > 0 ? Math.round((freeCount / total) * 100) : 0;
   const premiumPct = total > 0 ? Math.round((premiumCount / total) * 100) : 0;
+  const freePct = total > 0 ? 100 - premiumPct : 0;
   const style = {
-    background: `conic-gradient(#3b82f6 ${premiumPct * 3.6}deg, #f97316 0)`
+    background:
+      total === 0
+        ? "#1e293b"
+        : `conic-gradient(#3b82f6 ${premiumPct * 3.6}deg, #f97316 0)`,
   };
 
   return (

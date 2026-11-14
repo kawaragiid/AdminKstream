@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listSeries, createSeries } from "@/lib/firestoreService";
-import { normalizeMuxMetadata, syncEpisodeMuxMetadata } from "@/lib/muxService";
+import { normalizeMuxMetadata, signMediaItemMuxUrls, syncEpisodeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -13,11 +13,13 @@ export async function GET(request) {
   const filters = {
     search: searchParams.get("search") ?? searchParams.get("q") ?? "",
     category: searchParams.get("category") ?? "",
+    limit: searchParams.get("limit") ?? undefined,
+    offset: searchParams.get("offset") ?? undefined,
   };
 
   try {
     const series = await listSeries(filters);
-    return NextResponse.json({ data: series });
+    return NextResponse.json({ data: series.map(signMediaItemMuxUrls) });
   } catch (error) {
     console.error("GET /api/series", error);
     return NextResponse.json({ error: "Gagal memuat series." }, { status: 500 });
@@ -29,25 +31,26 @@ export async function POST(request) {
   if (authError) return authError;
 
   try {
-    const payload = await request.json();
+    const payload = await request.json().catch(() => null);
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }
 
-    // Validasi payload sebelum memanggil Mux API agar typo validasi tidak memicu side effect ke Mux.
     const validation = validateSeriesPayload(payload);
     if (!validation.valid) {
       return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
     }
 
-    const muxInfo = await normalizeMuxMetadata({
-      assetId: payload.mux_asset_id,
-      playbackId: payload.mux_playback_id,
-      videoId: payload.mux_video_id,
-    });
-    payload.mux_asset_id = muxInfo.assetId;
-    payload.mux_playback_id = muxInfo.playbackId;
-    payload.mux_video_id = muxInfo.videoId;
+    if (payload.mux_asset_id || payload.mux_playback_id || payload.mux_video_id) {
+      const muxInfo = await normalizeMuxMetadata({
+        assetId: payload.mux_asset_id,
+        playbackId: payload.mux_playback_id,
+        videoId: payload.mux_video_id,
+      });
+      payload.mux_asset_id = muxInfo.assetId;
+      payload.mux_playback_id = muxInfo.playbackId;
+      payload.mux_video_id = muxInfo.videoId;
+    }
 
     if (Array.isArray(payload.episodes)) {
       payload.episodes = await Promise.all(
@@ -72,6 +75,9 @@ export async function POST(request) {
     try {
       created = await createSeries(payload, session);
     } catch (dbError) {
+      if (dbError?.statusCode === 400) {
+        return NextResponse.json({ error: dbError.message }, { status: 400 });
+      }
       const orphanedAssetIds = [
         payload.mux_asset_id,
         ...(Array.isArray(payload.episodes) ? payload.episodes.map((ep) => ep?.mux_asset_id) : []),
@@ -109,9 +115,9 @@ export async function POST(request) {
       targetId: created.id,
       targetType: "series",
       metadata: { title: created.title },
-    });
+    }).catch((err) => console.warn("[POST /api/series] audit log failed:", err?.message || err));
 
-    return NextResponse.json({ data: created }, { status: 201 });
+    return NextResponse.json({ data: signMediaItemMuxUrls(created) }, { status: 201 });
   } catch (error) {
     console.error("POST /api/series", error);
     return NextResponse.json({ error: "Gagal membuat series." }, { status: 500 });

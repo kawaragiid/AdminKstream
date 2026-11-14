@@ -2,7 +2,7 @@
 import { convertSrtToVtt } from "@/utils/subtitles";
 import { requireRole } from "@/lib/session";
 
-const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024;
 
 export async function POST(request) {
   const { error: authError } = await requireRole();
@@ -29,7 +29,11 @@ export async function POST(request) {
       body = await request.json();
     }
 
-    const { content, mimeType } = body ?? {};
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ error: "Body JSON harus berupa objek." }, { status: 400 });
+    }
+
+    const { content } = body;
 
     if (!content || typeof content !== "string") {
       return NextResponse.json({ error: "Konten subtitle wajib diisi." }, { status: 400 });
@@ -40,7 +44,7 @@ export async function POST(request) {
     }
 
     const normalizedContent = content.replace(/^\uFEFF/, "");
-    const isAlreadyVtt = normalizedContent.trimStart().startsWith("WEBVTT") || mimeType === "text/vtt";
+    const isAlreadyVtt = /^WEBVTT(?:\s|$)/i.test(normalizedContent.trimStart());
     if (isAlreadyVtt) {
       return NextResponse.json({ data: normalizedContent, converted: false });
     }

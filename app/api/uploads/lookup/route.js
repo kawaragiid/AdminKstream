@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/session";
-import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
 import { ensureNeonSchema, getSql, isNeonConfigured } from "@/lib/neonDb";
-import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
 
 function matchesFingerprint(rawHash, sha256, size) {
   if (!rawHash) return false;
@@ -25,105 +23,62 @@ export async function POST(request) {
   if (authError) return authError;
 
   try {
-    const body = await request.json();
-    const sha256 = body?.fingerprint?.sha256;
+    const body = await request.json().catch(() => null);
+    const sha256 = typeof body?.fingerprint?.sha256 === "string" ? body.fingerprint.sha256.trim() : "";
     const size = Number(body?.fingerprint?.size);
-    if (!sha256 || !size) {
+    if (!sha256 || !Number.isFinite(size) || size <= 0) {
       return NextResponse.json({ error: "fingerprint.sha256 dan size wajib diisi" }, { status: 400 });
     }
 
-    // 1. Cek di Neon Postgres terlebih dahulu (database utama)
-    if (isNeonConfigured()) {
-      await ensureNeonSchema();
-      const sql = getSql();
-
-      const movieRows = await sql`
-        SELECT id, mux_asset_id, mux_playback_id, mux_video_id, thumbnail, trailer, file_hash
-        FROM movies
-        WHERE file_hash <> ''
-      `;
-      const matchedMovie = movieRows.find((row) => matchesFingerprint(row.file_hash, sha256, size));
-      if (matchedMovie && (matchedMovie.mux_playback_id || matchedMovie.mux_video_id)) {
-        return NextResponse.json({
-          data: {
-            type: "movie",
-            id: matchedMovie.id,
-            mux_asset_id: matchedMovie.mux_asset_id || null,
-            mux_playback_id: matchedMovie.mux_playback_id || matchedMovie.mux_video_id || null,
-            thumbnail: matchedMovie.thumbnail || null,
-            trailer: matchedMovie.trailer || null,
-          },
-        });
-      }
-
-      const seriesRows = await sql`SELECT id, episodes FROM series`;
-      for (const row of seriesRows) {
-        const episodes = Array.isArray(row.episodes) ? row.episodes : [];
-        const match = episodes.find(
-          (ep) => matchesFingerprint(ep?.fileHash, sha256, size) && (ep?.mux_playback_id || ep?.mux_video_id)
-        );
-        if (match) {
-          return NextResponse.json({
-            data: {
-              type: "episode",
-              seriesId: row.id,
-              episodeId: match.episodeId,
-              mux_asset_id: match.mux_asset_id || null,
-              mux_playback_id: match.mux_playback_id || match.mux_video_id || null,
-              thumbnail: match.thumbnail || null,
-              trailer: match.trailer || null,
-            },
-          });
-        }
-      }
-
+    if (!isNeonConfigured()) {
       return NextResponse.json({ data: null });
     }
 
-    // 2. Fallback ke Firestore jika Neon belum dikonfigurasi
-    if (!isFirebaseConfigured) {
-      return NextResponse.json({ data: null });
-    }
+    await ensureNeonSchema();
+    const sql = getSql();
+    const hashPattern = `%${sha256}%`;
 
-    const firestore = getFirestoreClient();
-
-    const moviesSnap = await firestore
-      .collection(FIRESTORE_COLLECTIONS.MOVIES)
-      .where("fileHash.sha256", "==", sha256)
-      .where("fileHash.size", "==", size)
-      .limit(1)
-      .get();
-
-    if (!moviesSnap.empty) {
-      const doc = moviesSnap.docs[0];
-      const d = doc.data();
+    const movieRows = await sql`
+      SELECT id, mux_asset_id, mux_playback_id, mux_video_id, thumbnail, trailer, file_hash
+      FROM movies
+      WHERE file_hash <> '' AND file_hash LIKE ${hashPattern}
+      LIMIT 20
+    `;
+    const matchedMovie = movieRows.find((row) => matchesFingerprint(row.file_hash, sha256, size));
+    if (matchedMovie && (matchedMovie.mux_playback_id || matchedMovie.mux_video_id)) {
       return NextResponse.json({
         data: {
           type: "movie",
-          id: doc.id,
-          mux_asset_id: d.mux_asset_id ?? null,
-          mux_playback_id: d.mux_playback_id ?? d.mux_video_id ?? null,
-          thumbnail: d.thumbnail ?? null,
-          trailer: d.trailer ?? null,
+          id: matchedMovie.id,
+          mux_asset_id: matchedMovie.mux_asset_id || null,
+          mux_playback_id: matchedMovie.mux_playback_id || matchedMovie.mux_video_id || null,
+          thumbnail: matchedMovie.thumbnail || null,
+          trailer: matchedMovie.trailer || null,
         },
       });
     }
 
-    const seriesSnap = await firestore.collection(FIRESTORE_COLLECTIONS.SERIES).get();
-    for (const doc of seriesSnap.docs) {
-      const d = doc.data();
-      const episodes = Array.isArray(d.episodes) ? d.episodes : [];
-      const match = episodes.find((ep) => ep?.fileHash?.sha256 === sha256 && Number(ep?.fileHash?.size) === size);
+    const seriesRows = await sql`
+      SELECT id, episodes
+      FROM series
+      WHERE episodes::text LIKE ${hashPattern}
+      LIMIT 20
+    `;
+    for (const row of seriesRows) {
+      const episodes = Array.isArray(row.episodes) ? row.episodes : [];
+      const match = episodes.find(
+        (ep) => matchesFingerprint(ep?.fileHash, sha256, size) && (ep?.mux_playback_id || ep?.mux_video_id)
+      );
       if (match) {
         return NextResponse.json({
           data: {
             type: "episode",
-            seriesId: doc.id,
+            seriesId: row.id,
             episodeId: match.episodeId,
-            mux_asset_id: match.mux_asset_id ?? null,
-            mux_playback_id: match.mux_playback_id ?? match.mux_video_id ?? null,
-            thumbnail: match.thumbnail ?? null,
-            trailer: match.trailer ?? null,
+            mux_asset_id: match.mux_asset_id || null,
+            mux_playback_id: match.mux_playback_id || match.mux_video_id || null,
+            thumbnail: match.thumbnail || null,
+            trailer: match.trailer || null,
           },
         });
       }

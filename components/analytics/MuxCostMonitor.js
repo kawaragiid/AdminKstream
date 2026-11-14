@@ -70,7 +70,40 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
   );
   const creditTotal = s?.creditTotalUsd ?? 20;
   const totalUsage = s?.totalEstimatedUsageUsd ?? 0;
-  const creditUsedPct = Math.min(100, Math.round((Math.min(creditTotal, totalUsage) / creditTotal) * 1000) / 10);
+  const creditUsedPct =
+    creditTotal > 0
+      ? Math.min(100, Math.round((Math.min(creditTotal, totalUsage) / creditTotal) * 1000) / 10)
+      : 0;
+
+  if (!report) {
+    return (
+      <section className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-6 shadow-lg shadow-slate-950/30 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight text-slate-100">
+              Estimasi &amp; Perhitungan Biaya Mux (PAYG)
+            </h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Data laporan biaya Mux belum tersedia.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700/80 bg-slate-800/80 px-3.5 py-2 text-xs font-medium text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 disabled:opacity-50"
+          >
+            <span>{loading ? "Memuat..." : "↻ Muat Data Mux"}</span>
+          </button>
+        </div>
+        {error && (
+          <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 p-4 text-xs text-rose-200">
+            {error}
+          </div>
+        )}
+      </section>
+    );
+  }
 
   const calculationSteps = [
     {

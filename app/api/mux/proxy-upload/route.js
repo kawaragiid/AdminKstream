@@ -10,14 +10,6 @@ function hasSafeUploadPathname(pathname) {
   return /^\/[a-zA-Z0-9._~!$&'()*+,;=:@%-]+(?:\/[a-zA-Z0-9._~!$&'()*+,;=:@%-]+)*$/.test(pathname);
 }
 
-/**
- * Validasi target direct-upload Mux untuk mencegah SSRF / open-proxy ke bucket S3 pribadi.
- * Hanya mengizinkan:
- * - Domain resmi Mux (`mux.com`, `*.mux.com`)
- * - Signed GCS direct-upload URL (`storage.googleapis.com` dengan parameter tanda tangan GCS & path objek valid)
- * - Signed S3 / S3-Accelerate URL (`*.s3.amazonaws.com`, `*.s3-accelerate.amazonaws.com`) hanya jika
- *   query parameter presigned (`X-Amz-Signature` & `X-Amz-Credential`) ada dan pathname merupakan key objek valid.
- */
 function isAllowedMuxUploadUrl(url) {
   try {
     const u = new URL(url);
@@ -50,6 +42,23 @@ function isAllowedMuxUploadUrl(url) {
   }
 }
 
+function createByteLimitedStream(sourceStream, maxBytes) {
+  let total = 0;
+  const limiter = new TransformStream({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        const err = new Error("Ukuran file melebihi batas proxy (100 MB).");
+        err.statusCode = 413;
+        controller.error(err);
+        return;
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  return sourceStream.pipeThrough(limiter);
+}
+
 export async function POST(request) {
   const { error: authError } = await requireRole();
   if (authError) return authError;
@@ -66,21 +75,33 @@ export async function POST(request) {
     return NextResponse.json({ error: "upload URL tidak valid." }, { status: 400 });
   }
 
-  const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > MAX_PROXY_BYTES) {
-    return NextResponse.json({ error: "Ukuran file melebihi batas proxy (100 MB). Gunakan direct upload." }, { status: 413 });
+  const contentLengthHeader = request.headers.get("content-length");
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : null;
+  if (contentLength !== null && (!Number.isFinite(contentLength) || contentLength > MAX_PROXY_BYTES)) {
+    return NextResponse.json(
+      { error: "Ukuran file melebihi batas proxy (100 MB). Gunakan direct upload." },
+      { status: 413 }
+    );
+  }
+
+  if (!request.body) {
+    return NextResponse.json({ error: "Body upload kosong." }, { status: 400 });
   }
 
   try {
-    const bytes = await request.arrayBuffer();
-    if (bytes.byteLength > MAX_PROXY_BYTES) {
-      return NextResponse.json({ error: "Ukuran file melebihi batas proxy (100 MB)." }, { status: 413 });
+    const forwardHeaders = {
+      "Content-Type": request.headers.get("content-type") || "application/octet-stream",
+    };
+    if (contentLength !== null && contentLength > 0) {
+      forwardHeaders["Content-Length"] = String(contentLength);
     }
 
+    const limitedBody = createByteLimitedStream(request.body, MAX_PROXY_BYTES);
     const res = await fetch(uploadUrl, {
       method,
-      headers: { "Content-Type": request.headers.get("content-type") || "application/octet-stream" },
-      body: bytes,
+      headers: forwardHeaders,
+      body: limitedBody,
+      duplex: "half",
       redirect: "error",
     });
 
@@ -90,6 +111,9 @@ export async function POST(request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error?.statusCode === 413) {
+      return NextResponse.json({ error: error.message }, { status: 413 });
+    }
     console.error("POST /api/mux/proxy-upload", error);
     return NextResponse.json({ error: "Proxy upload gagal." }, { status: 500 });
   }
