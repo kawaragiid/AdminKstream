@@ -195,8 +195,8 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       const initJson = await initRes.json().catch(() => ({}));
       if (!initRes.ok) throw new Error(initJson?.error ?? "Gagal membuat URL upload Mux.");
 
-      const uploadUrl = initJson?.data?.uploadUrl;
-      const uploadId = initJson?.data?.uploadId;
+      const uploadUrl = initJson?.data?.url || initJson?.data?.uploadUrl;
+      const uploadId = initJson?.data?.id || initJson?.data?.uploadId;
       if (!uploadUrl || !uploadId) throw new Error("Response upload Mux tidak lengkap.");
       setMuxUploadId(uploadId);
 
@@ -345,7 +345,9 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
         title: title.trim(),
         description: description.trim(),
         duration: duration ? Number(duration) : null,
-        thumbnail: thumbnail.trim() || null,
+        thumbnail:
+          thumbnail.trim() ||
+          (cleanPlayback ? `https://image.mux.com/${cleanPlayback}/thumbnail.jpg?width=640` : null),
         mux_asset_id: muxAssetId || null,
         mux_playback_id: cleanPlayback,
         mux_video_id: cleanPlayback,

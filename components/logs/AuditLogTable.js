@@ -35,7 +35,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
   const refreshLogs = async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/logs");
+      const response = await fetch("/api/logs?limit=100");
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error ?? "Gagal memuat log");

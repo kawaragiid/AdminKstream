@@ -10,6 +10,9 @@ const Header = ({ session }) => {
   const role = session?.role ?? ADMIN_ROLES.EDITOR;
   const navigation = ADMIN_NAVIGATION.filter((item) => item.roles.includes(role));
   const activePage = navigation.find((item) => item.href === pathname);
+  const pageTitle = pathname?.startsWith("/profile")
+    ? "Profil Admin"
+    : activePage?.title || "Dashboard";
 
   return (
     <header className="sticky top-0 z-40 flex min-h-[64px] sm:min-h-[72px] items-center justify-between gap-2 sm:gap-4 border-b border-slate-800/80 bg-slate-950/85 px-4 py-3 backdrop-blur-xl md:px-8">
@@ -18,7 +21,7 @@ const Header = ({ session }) => {
           Kstream Admin
         </p>
         <h1 className="truncate text-lg font-semibold tracking-tight text-slate-100 sm:text-xl md:text-2xl">
-          {activePage?.title || "Dashboard"}
+          {pageTitle}
         </h1>
       </div>
 
@@ -30,11 +33,6 @@ const Header = ({ session }) => {
           <span>+</span>
           <span>Upload Konten</span>
         </Link>
-
-        <div className="hidden items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-slate-300 lg:flex">
-          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
-          <span>Mux Basic Guard</span>
-        </div>
 
         <Link
           href="/notifications"

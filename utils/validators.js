@@ -17,10 +17,19 @@ export function sanitizeTagsList(rawTags = []) {
 }
 
 export function validateSubtitleEntries(subtitles = []) {
+  if (!Array.isArray(subtitles)) {
+    return [{ _error: "Daftar subtitle harus berupa array." }];
+  }
+
   const errors = [];
 
   subtitles.forEach((item, index) => {
     const entryErrors = {};
+
+    if (!item || typeof item !== "object") {
+      errors[index] = { _error: "Format subtitle tidak valid." };
+      return;
+    }
 
     if (!item.lang || typeof item.lang !== "string") {
       entryErrors.lang = "Kode bahasa wajib diisi.";

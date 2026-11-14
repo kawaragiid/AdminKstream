@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/session";
 import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function GET() {
-  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN, ADMIN_ROLES.EDITOR]);
   if (authError) return authError;
 
   try {

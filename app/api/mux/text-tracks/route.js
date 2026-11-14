@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { addMultipleTextTracks, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
 import { requireRole } from "@/lib/session";
-import { deleteTempSubtitle, extractTempSubtitleToken } from "@/lib/tempSubtitles";
 
 export async function POST(request) {
   const { error: authError } = await requireRole();
@@ -53,18 +52,8 @@ export async function POST(request) {
       );
     }
 
-    // Opsi A (Full Mux Native): subtitle kini tersimpan permanen di Mux,
-    // jadi salinan sementara di Firestore (kstream-temp-subtitles) langsung dihapus.
-    if (isMuxConfigured) {
-      await Promise.allSettled(
-        filtered.map((track) => {
-          const token = extractTempSubtitleToken(track.url);
-          return token ? deleteTempSubtitle(token) : Promise.resolve(false);
-        })
-      );
-    }
-
-    return NextResponse.json({ data: results, muxConfigured: isMuxConfigured, tempCleaned: isMuxConfigured });
+    // Mux fetches .vtt asynchronously after track creation; rely on TTL expiry to clean up temp_subtitles.
+    return NextResponse.json({ data: results, muxConfigured: isMuxConfigured, tempCleaned: false });
   } catch (error) {
     console.error("POST /api/mux/text-tracks", error);
     return NextResponse.json({ error: "Gagal menambahkan subtitle ke Mux." }, { status: 500 });

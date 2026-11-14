@@ -1,10 +1,20 @@
+import { redirect } from "next/navigation";
 import ToolsPanel from "@/components/tools/ToolsPanel";
+import { getSessionUser } from "@/lib/session";
 
 export const metadata = {
   title: "Tools",
 };
 
-export default function ToolsPage() {
+export default async function ToolsPage() {
+  const session = await getSessionUser();
+  if (!session) {
+    redirect("/login");
+  }
+  if (!["super-admin", "admin"].includes(session.role)) {
+    redirect("/");
+  }
+
   return (
     <div className="space-y-6">
       <header className="space-y-2">

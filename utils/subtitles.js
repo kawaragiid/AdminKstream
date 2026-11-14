@@ -12,8 +12,14 @@ export function convertSrtToVtt(srtText = "") {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (/^\d+$/.test(line.trim())) {
-      // Skip numeric counters
-      continue;
+      let nextIdx = i + 1;
+      while (nextIdx < lines.length && !lines[nextIdx].trim()) {
+        nextIdx += 1;
+      }
+      if (nextIdx < lines.length && lines[nextIdx].includes("-->")) {
+        // Skip numeric cue index before timestamp
+        continue;
+      }
     }
     cleaned.push(line.replace(TIME_REGEX, (_match, time, ms) => `${time}.${ms}`));
   }

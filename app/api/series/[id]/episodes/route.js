@@ -43,6 +43,10 @@ export async function POST(request, { params }) {
     if (!payload.duration && muxInfo.duration) {
       payload.duration = muxInfo.duration;
     }
+    const playbackId = payload.mux_playback_id || payload.muxPlaybackId;
+    if ((!payload.thumbnail || (typeof payload.thumbnail === "string" && !payload.thumbnail.trim())) && playbackId) {
+      payload.thumbnail = `https://image.mux.com/${playbackId}/thumbnail.jpg?width=640`;
+    }
 
     const { valid, errors } = validateEpisode(payload);
 

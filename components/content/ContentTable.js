@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CONTENT_CATEGORIES, CONTENT_TYPES } from "@/utils/constants";
+import { ADMIN_ROLES, CONTENT_CATEGORIES, CONTENT_TYPES } from "@/utils/constants";
 import MovieForm from "@/components/upload/MovieForm";
 import SeriesForm from "@/components/upload/SeriesForm";
 
@@ -11,7 +11,8 @@ const filtersDefault = {
   category: "",
 };
 
-export default function ContentTable() {
+export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
+  const canDelete = userRole === ADMIN_ROLES.SUPER_ADMIN || userRole === ADMIN_ROLES.ADMIN;
   const [items, setItems] = useState([]);
   const [filters, setFilters] = useState(filtersDefault);
   const [loading, setLoading] = useState(true);
@@ -20,6 +21,7 @@ export default function ContentTable() {
   const [editMode, setEditMode] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const [muxDetails, setMuxDetails] = useState(null);
   const [muxLoading, setMuxLoading] = useState(false);
   const [muxError, setMuxError] = useState(null);
@@ -128,20 +130,31 @@ export default function ContentTable() {
   };
 
   const handleDelete = async (item) => {
-    const confirmed = window.confirm(item.type === CONTENT_TYPES.MOVIE ? `Hapus movie "${item.title}"? Tindakan ini tidak bisa dibatalkan.` : `Hapus series "${item.title}" beserta seluruh episode?`);
+    if (!canDelete) return;
+    const confirmed = window.confirm(
+      item.type === CONTENT_TYPES.MOVIE
+        ? `Hapus movie "${item.title}"? Tindakan ini tidak bisa dibatalkan.`
+        : `Hapus series "${item.title}" beserta seluruh episode?`
+    );
     if (!confirmed) return;
 
+    setDeletingId(item.id);
+    setDetailError(null);
     try {
       const endpoint = item.type === CONTENT_TYPES.MOVIE ? "/api/movies" : "/api/series";
       const response = await fetch(`${endpoint}/${item.id}`, { method: "DELETE" });
       if (!response.ok) {
-        const result = await response.json();
+        const result = await response.json().catch(() => ({}));
         throw new Error(result.error ?? "Gagal menghapus konten.");
       }
       setSelectedItem(null);
       await fetchData();
     } catch (err) {
-      setError(err.message ?? "Gagal menghapus konten.");
+      const msg = err?.message ?? "Gagal menghapus konten.";
+      setError(msg);
+      setDetailError(msg);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -443,13 +456,16 @@ export default function ContentTable() {
                             >
                               Kelola
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(item)}
-                              className="rounded-lg border border-transparent px-3 py-1.5 font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10"
-                            >
-                              Hapus
-                            </button>
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(item)}
+                                disabled={deletingId === item.id}
+                                className="rounded-lg border border-transparent px-3 py-1.5 font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:opacity-60"
+                              >
+                                {deletingId === item.id ? "Menghapus..." : "Hapus"}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -494,13 +510,16 @@ export default function ContentTable() {
                       >
                         Kelola
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/10"
-                      >
-                        Hapus
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          disabled={deletingId === item.id}
+                          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
+                        >
+                          {deletingId === item.id ? "Menghapus..." : "Hapus"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -549,13 +568,16 @@ export default function ContentTable() {
                       >
                         Kelola
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item)}
-                        className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10"
-                      >
-                        Hapus
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item)}
+                          disabled={deletingId === item.id}
+                          className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
+                        >
+                          {deletingId === item.id ? "Menghapus..." : "Hapus"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -725,7 +747,36 @@ export default function ContentTable() {
 
                 <div className="space-y-2 rounded-xl border border-slate-800/80 bg-slate-900/60 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">Status Asset Mux</p>
-                  {muxLoading ? (
+                  {selectedItem.type === CONTENT_TYPES.SERIES ? (
+                    (() => {
+                      const eps = Array.isArray(selectedItem.episodes) ? selectedItem.episodes : [];
+                      const readyCount = eps.filter(
+                        (ep) => ep?.mux_playback_id || ep?.muxPlaybackId || ep?.mux_video_id
+                      ).length;
+                      const totalDuration = eps.reduce(
+                        (sum, ep) => sum + (Number(ep?.duration) > 0 ? Number(ep.duration) : 0),
+                        0
+                      );
+                      return (
+                        <ul className="space-y-1 text-xs text-slate-400">
+                          <li>
+                            Total Episode: <span className="text-slate-200">{eps.length}</span>
+                          </li>
+                          <li>
+                            Episode Mux Ready:{" "}
+                            <span className={readyCount > 0 ? "text-emerald-300" : "text-amber-300"}>
+                              {readyCount} / {eps.length} episode
+                            </span>
+                          </li>
+                          {totalDuration > 0 && (
+                            <li>
+                              Total Durasi: <span className="text-slate-200">{formatDuration(totalDuration)}</span>
+                            </li>
+                          )}
+                        </ul>
+                      );
+                    })()
+                  ) : muxLoading ? (
                     <p className="text-xs text-slate-500">Memuat data dari Mux...</p>
                   ) : muxError ? (
                     <p className="text-xs text-rose-400">{muxError}</p>
@@ -750,13 +801,16 @@ export default function ContentTable() {
                   >
                     Edit {selectedItem.type === CONTENT_TYPES.MOVIE ? "Movie" : "Series"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(selectedItem)}
-                    className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20"
-                  >
-                    Hapus Konten
-                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(selectedItem)}
+                      disabled={deletingId === selectedItem.id}
+                      className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-60"
+                    >
+                      {deletingId === selectedItem.id ? "Menghapus..." : "Hapus Konten"}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

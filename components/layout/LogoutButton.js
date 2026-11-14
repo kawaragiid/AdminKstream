@@ -2,14 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "firebase/auth";
+import { getFirebaseAuth } from "@/lib/firebaseClient";
 
 const LogoutButton = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const handleLogout = async () => {
+    if (!window.confirm("Keluar dari panel admin?")) return;
+
     try {
       setLoading(true);
+      await signOut(getFirebaseAuth()).catch(() => {});
       const response = await fetch("/api/auth/session", {
         method: "DELETE",
       });

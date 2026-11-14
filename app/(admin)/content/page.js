@@ -1,10 +1,13 @@
 ﻿import ContentTable from "@/components/content/ContentTable";
+import { getSessionUser } from "@/lib/session";
 
 export const metadata = {
   title: "Daftar Konten",
 };
 
-export default function ContentPage() {
+export default async function ContentPage() {
+  const session = await getSessionUser();
+
   return (
     <div className="space-y-6">
       <header className="space-y-2">
@@ -13,7 +16,7 @@ export default function ContentPage() {
           Pantau status video, update playback ID, dan atur distribusi.
         </p>
       </header>
-      <ContentTable />
+      <ContentTable userRole={session?.role} />
     </div>
   );
 }

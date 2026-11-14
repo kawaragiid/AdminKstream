@@ -63,17 +63,22 @@ export async function DELETE() {
     const cookieValue = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
     if (cookieValue) {
-      const decoded = await verifySessionCookieValue(cookieValue);
-      if (decoded) {
-        const auth = getAuth(getFirebaseAdminApp());
-        await auth.revokeRefreshTokens(decoded.sub ?? decoded.uid);
+      try {
+        const decoded = await verifySessionCookieValue(cookieValue);
+        if (decoded) {
+          const auth = getAuth(getFirebaseAdminApp());
+          await auth.revokeRefreshTokens(decoded.sub ?? decoded.uid);
+        }
+      } catch (revokeError) {
+        console.warn("DELETE /api/auth/session revokeRefreshTokens failed:", revokeError?.message || revokeError);
       }
     }
 
-    await clearSessionCookie();
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("DELETE /api/auth/session", error);
     return NextResponse.json({ error: "Gagal menghapus sesi." }, { status: 500 });
+  } finally {
+    await clearSessionCookie().catch(() => {});
   }
 }

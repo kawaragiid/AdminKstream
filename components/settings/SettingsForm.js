@@ -98,7 +98,18 @@ const SettingsForm = ({ initialSettings }) => {
           ))}
         </div>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-          <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Tambah kategori" className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200" />
+          <input
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addCategory();
+              }
+            }}
+            placeholder="Tambah kategori"
+            className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200"
+          />
           <button // Tombol tambah dibuat full-width di mobile
             type="button"
             onClick={addCategory}

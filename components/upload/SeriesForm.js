@@ -468,12 +468,15 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       const p = json?.data?.asset?.playback_ids?.[0]?.id || json?.data?.status?.playback_ids?.[0]?.id || "";
       let assetId = json?.data?.status?.asset_id || json?.data?.asset?.id || null;
       if (!assetId && p) assetId = await fetchAssetIdFromPlayback(p);
+      const dur = json?.data?.asset?.duration;
       if (p) {
         setEpisodeDraft((prev) => ({
           ...prev,
           mux_playback_id: p,
           mux_video_id: p,
           mux_asset_id: assetId ?? prev.mux_asset_id ?? null,
+          duration: prev.duration || (dur != null ? String(Math.round(Number(dur))) : prev.duration),
+          thumbnail: prev.thumbnail?.trim() || `https://image.mux.com/${p}/thumbnail.jpg?width=640`,
         }));
         setUploadStatus("success");
         setMessage({ type: "success", text: "Playback ID berhasil diisi otomatis." });
@@ -614,6 +617,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       let playbackId = null;
       let assetId = null;
       let assetReady = false;
+      let resolvedDuration = null;
       const startTime = Date.now();
       const pollTimeout = 120000;
 
@@ -624,6 +628,9 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           if (statusRes.ok) {
             playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
             assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+            if (statusJson?.data?.asset?.duration != null) {
+              resolvedDuration = Math.round(Number(statusJson.data.asset.duration));
+            }
             const currentAssetStatus = statusJson?.data?.asset?.status ?? statusJson?.data?.status?.status;
             if (currentAssetStatus === "ready") {
               assetReady = true;
@@ -642,6 +649,8 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         mux_playback_id: playbackId,
         mux_video_id: playbackId,
         mux_asset_id: assetId,
+        duration: nextEpisode.duration || (resolvedDuration ? String(resolvedDuration) : ""),
+        thumbnail: nextEpisode.thumbnail?.trim() || `https://image.mux.com/${playbackId}/thumbnail.jpg?width=640`,
       };
 
       setEpisodeDraft(nextEpisode);
@@ -724,10 +733,11 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       return;
     }
 
+    const parsedEp = Number(episodeDraft.epNumber);
     const draft = {
       ...episodeDraft,
       episodeId: episodeDraft.episodeId ?? uid(),
-      epNumber: Number(episodeDraft.epNumber ?? (formData.episodes?.length ?? 0) + 1),
+      epNumber: Number.isFinite(parsedEp) && parsedEp > 0 ? parsedEp : (formData.episodes?.length ?? 0) + 1,
     };
 
     // Jika series sudah ada di server
@@ -926,7 +936,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
           ...episode,
           episodeId: episode.episodeId ?? uid(),
           seasonNumber: Number(episode.seasonNumber ?? 1),
-          epNumber: Number(episode.epNumber ?? index + 1),
+          epNumber: Number(episode.epNumber) > 0 ? Number(episode.epNumber) : index + 1,
           duration: episode.duration ? Number(episode.duration) : null,
         })),
       };
@@ -1017,6 +1027,16 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
             />
           </label>
         </div>
+
+        <label className="block text-sm text-slate-300">
+          Trailer URL (opsional)
+          <input
+            value={formData.trailer ?? ""}
+            onChange={(e) => setFormData((prev) => ({ ...prev, trailer: e.target.value }))}
+            placeholder="https://stream.mux.com/... atau URL video trailer"
+            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+          />
+        </label>
 
         {/* DETAIL METADATA ALA NETFLIX */}
         <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/40 p-5">
@@ -1325,7 +1345,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                   onChange={(e) =>
                     setEpisodeDraft((prev) => ({
                       ...prev,
-                      epNumber: Number(e.target.value),
+                      epNumber: e.target.value === "" ? "" : Number(e.target.value),
                     }))
                   }
                   className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
