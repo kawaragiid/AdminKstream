@@ -22,8 +22,23 @@ const defaultMovie = {
 
 const emptySubtitle = { lang: "en", label: "English", url: "" };
 
+const createSubtitleUid = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `sub-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const withSubtitleUids = (subtitles = []) =>
+  (Array.isArray(subtitles) ? subtitles : []).map((sub) => ({
+    ...sub,
+    _uid: sub?._uid || createSubtitleUid(),
+  }));
+
 export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpan Movie" }) {
-  const [formData, setFormData] = useState({ ...defaultMovie, ...initialData });
+  const [formData, setFormData] = useState({
+    ...defaultMovie,
+    ...initialData,
+    subtitles: withSubtitleUids(initialData?.subtitles),
+  });
   const [message, setMessage] = useState(null);
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,7 +72,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const lastFetchedPlaybackRef = useRef(null);
 
   useEffect(() => {
-    setFormData({ ...defaultMovie, ...initialData });
+    setFormData({
+      ...defaultMovie,
+      ...initialData,
+      subtitles: withSubtitleUids(initialData?.subtitles),
+    });
     setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
     const hasInitialSubtitles = (initialData?.subtitles ?? []).some(isValidSubtitleEntry);
     setSubtitleUploadStatus(hasInitialSubtitles ? "success" : "idle");
@@ -76,7 +95,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   }, [formData.subtitles]);
 
   useEffect(() => {
-    if ((formData.mux_playback_id || formData.mux_video_id) && !["uploading", "hashing"].includes(uploadStatus)) {
+    if ((formData.mux_playback_id || formData.mux_video_id) && !["uploading", "hashing", "error"].includes(uploadStatus)) {
       setUploadStatus("success");
     }
   }, [formData.mux_playback_id, formData.mux_video_id, uploadStatus]);
@@ -373,22 +392,30 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const pollTimeout = 120000;
       while (Date.now() - startTime < pollTimeout) {
         if (playbackId && assetId && assetReady) break;
+        let statusRes = null;
+        let statusJson = {};
         try {
-          const statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
-          const statusJson = await statusRes.json().catch(() => ({}));
-          if (statusRes.ok) {
-            playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
-            assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
-            const currentAssetStatus = statusJson?.data?.asset?.status ?? statusJson?.data?.status?.status;
-            if (currentAssetStatus === "ready") {
-              assetReady = true;
-            }
-          } else {
-            console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
-          }
+          statusRes = await fetch(`/api/mux/upload-status?uploadId=${encodeURIComponent(uploadId)}`);
+          statusJson = await statusRes.json().catch(() => ({}));
         } catch (pollErr) {
           console.warn("[MUX DEBUG] Upload status fetch failed", uploadId, pollErr?.message ?? pollErr);
         }
+
+        if (statusRes?.ok) {
+          playbackId = playbackId ?? statusJson?.data?.asset?.playback_ids?.[0]?.id ?? statusJson?.data?.status?.playback_ids?.[0]?.id ?? null;
+          assetId = assetId ?? statusJson?.data?.asset?.id ?? statusJson?.data?.status?.asset_id ?? null;
+          const currentAssetStatus = statusJson?.data?.asset?.status ?? statusJson?.data?.status?.status;
+          const uploadStatusVal = statusJson?.data?.status?.status;
+          if (currentAssetStatus === "errored" || uploadStatusVal === "errored") {
+            throw new Error("Pemrosesan video di Mux gagal (errored).");
+          }
+          if (currentAssetStatus === "ready") {
+            assetReady = true;
+          }
+        } else if (statusRes) {
+          console.warn("[MUX DEBUG] Upload status error", uploadId, statusRes.status, statusJson);
+        }
+
         if (playbackId && assetId && assetReady) break;
         await muxWait(2000);
       }
@@ -399,6 +426,10 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
 
       if (!playbackId || !assetId) {
         throw new Error("Gagal mendapatkan playbackId / assetId dari Mux.");
+      }
+
+      if (!assetReady) {
+        throw new Error("Waktu tunggu pemrosesan video di Mux habis sebelum video siap. Periksa status di dashboard Mux atau isi Playback ID manual.");
       }
 
       setFormData((prev) => ({
@@ -442,7 +473,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const addSubtitle = () => {
     setFormData((prev) => ({
       ...prev,
-      subtitles: [...(prev.subtitles ?? []), emptySubtitle],
+      subtitles: [...(prev.subtitles ?? []), { ...emptySubtitle, _uid: createSubtitleUid() }],
     }));
     setSubtitleUploadStatus("idle");
     setSubtitleSyncStatus("idle");
@@ -472,6 +503,9 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
 
+    const targetSub = formData.subtitles?.[index];
+    const targetUid = targetSub?._uid;
+
     try {
       setSubtitleUploadStatus("processing");
       const text = await file.text();
@@ -486,8 +520,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       const vttFile = new File([vttBlob], file.name.replace(/\.srt$/i, ".vtt"), { type: "text/vtt" });
       const fd = new FormData();
       fd.append("file", vttFile, vttFile.name);
-      const lang = formData.subtitles?.[index]?.lang || "en";
-      const label = formData.subtitles?.[index]?.label || lang;
+      const lang = targetSub?.lang || "en";
+      const label = targetSub?.label || lang;
       fd.append("lang", lang);
       fd.append("label", label);
 
@@ -498,7 +532,19 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
       }
       const json = await res.json().catch(() => ({}));
       const url = json?.data?.url ?? "";
-      updateSubtitle(index, "url", url);
+      setFormData((prev) => {
+        const currentSubs = prev.subtitles ?? [];
+        const targetIndex = currentSubs.findIndex((item) =>
+          targetUid ? item?._uid === targetUid : item === targetSub
+        );
+        if (targetIndex === -1) return prev;
+        const subtitles = [...currentSubs];
+        subtitles[targetIndex] = {
+          ...subtitles[targetIndex],
+          url,
+        };
+        return { ...prev, subtitles };
+      });
       setSubtitleUploadStatus("success");
       setSubtitleSyncStatus("idle");
       setMessage({ type: "success", text: "Subtitle berhasil diunggah. Segera kirim ke Mux." });
@@ -607,7 +653,10 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         return;
       }
 
-      const submissionData = { ...formData };
+      const submissionData = {
+        ...formData,
+        subtitles: (formData.subtitles ?? []).map(({ _uid, ...sub }) => sub),
+      };
 
       const playbackForThumb = submissionData.mux_playback_id || submissionData.mux_video_id;
       if (!submissionData.thumbnail?.trim() && playbackForThumb) {
@@ -651,6 +700,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
         setCurrentVideoFile(null);
         setTrailerStart("");
         setTrailerEnd("");
+        setStudioStep(1);
       }
       onSuccess?.(result.data ?? submissionData);
     } catch (error) {
@@ -941,7 +991,7 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                 </div>
 
                 {(formData.subtitles ?? []).map((subtitle, index) => (
-                  <div key={index} className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                  <div key={subtitle._uid ?? index} className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <select
                         value={subtitle.lang ?? "en"}
@@ -1060,7 +1110,11 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
                     <button
                       type="button"
                       onClick={() => {
-                        setFormData({ ...defaultMovie, ...initialData });
+                        setFormData({
+                          ...defaultMovie,
+                          ...initialData,
+                          subtitles: withSubtitleUids(initialData?.subtitles),
+                        });
                         setErrors({});
                         setMessage(null);
                       }}

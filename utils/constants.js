@@ -21,7 +21,7 @@ export const CONTENT_CATEGORIES = ["Action", "Adventure", "Animation", "Comedy",
 export const SUBTITLE_LANGUAGES = [
   { code: "en", label: "English" },
   { code: "id", label: "Bahasa Indonesia" },
-  { code: "jp", label: "日本語" },
+  { code: "ja", label: "日本語" },
   { code: "es", label: "Español" },
   { code: "fr", label: "Français" },
 ];

@@ -675,6 +675,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       }
       setUploadStatus("error");
       setUploadProgress(0);
+      setCurrentVideoFile(null);
       setMessage({ type: "error", text: userMessage });
     }
   };
@@ -911,6 +912,24 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     setErrors({});
     setMessage(null);
 
+    const newErrors = {};
+    if (!formData.title?.trim()) {
+      newErrors.title = "Judul series wajib diisi.";
+    }
+    if (!formData.description?.trim() || formData.description.trim().length < 10) {
+      newErrors.description = "Deskripsi series minimal 10 karakter.";
+    }
+    if (!formData.category?.trim()) {
+      newErrors.category = "Kategori wajib diisi.";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setMessage({ type: "error", text: "Mohon lengkapi semua field yang wajib diisi." });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const highestEpSeason = (formData.episodes ?? []).reduce(
         (max, ep) => Math.max(max, Number(ep?.seasonNumber ?? 1)),
@@ -954,7 +973,10 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
       }
 
       setMessage({ type: "success", text: "Series berhasil disimpan." });
-      if (!initialData?.id) setFormData(defaultSeries);
+      if (!initialData?.id) {
+        setFormData(defaultSeries);
+        setActiveSeason(1);
+      }
       onSuccess?.(result.data ?? payload);
     } catch (error) {
       setMessage({ type: "error", text: error.message });
@@ -979,6 +1001,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
               className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
               required
             />
+            {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
           </label>
           <label className="text-sm text-slate-300">
             Kategori
@@ -993,6 +1016,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 </option>
               ))}
             </select>
+            {errors.category && <p className="mt-1 text-xs text-rose-400">{errors.category}</p>}
           </label>
         </div>
 
@@ -1005,6 +1029,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
             className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
             required
           />
+          {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
         </label>
 
         <div className="grid gap-4 md:grid-cols-2">

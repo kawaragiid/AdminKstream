@@ -6,12 +6,22 @@ import { listUsers } from "@/lib/usersService";
 import { requireRole } from "@/lib/session";
 import { ADMIN_ROLES } from "@/utils/constants";
 
-const ALLOWED_DATABASE_TABLES = new Set(["movies", "series", "platform_settings"]);
+const ALLOWED_DATABASE_TABLES = new Set([
+  "movies",
+  "series",
+  "platform_settings",
+  "users",
+  "analytics_snapshots",
+  "audit_logs",
+  "notifications",
+]);
 
 function escapeCsvCell(value) {
   if (value === null || value === undefined) return '""';
   const raw = typeof value === "object" ? JSON.stringify(value) : String(value);
-  return `"${raw.replace(/"/g, '""')}"`;
+  // Netralisir formula injection (CWE-1236) dengan awalan petik tunggal.
+  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 function toCsv(records) {
@@ -96,7 +106,7 @@ export async function GET(request) {
         .map((s) => s.trim())
         .filter((s) => s && ALLOWED_DATABASE_TABLES.has(s));
 
-      const tables = reqTables.length ? reqTables : ["movies", "series", "platform_settings"];
+      const tables = reqTables.length ? reqTables : Array.from(ALLOWED_DATABASE_TABLES);
 
       await ensureNeonSchema();
       const sql = getSql();
@@ -109,6 +119,18 @@ export async function GET(request) {
       }
       if (tables.includes("platform_settings")) {
         result.platform_settings = await sql`SELECT * FROM platform_settings ORDER BY id ASC`;
+      }
+      if (tables.includes("users")) {
+        result.users = await sql`SELECT * FROM users ORDER BY updated_at DESC`;
+      }
+      if (tables.includes("analytics_snapshots")) {
+        result.analytics_snapshots = await sql`SELECT * FROM analytics_snapshots ORDER BY id ASC`;
+      }
+      if (tables.includes("audit_logs")) {
+        result.audit_logs = await sql`SELECT * FROM audit_logs ORDER BY created_at DESC`;
+      }
+      if (tables.includes("notifications")) {
+        result.notifications = await sql`SELECT * FROM notifications ORDER BY created_at DESC`;
       }
 
       const body = JSON.stringify({ exportedAt: new Date().toISOString(), tables: result }, null, 2);

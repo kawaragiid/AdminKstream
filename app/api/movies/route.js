@@ -30,6 +30,16 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
+    }
+
+    // Validasi payload sebelum memanggil Mux API agar typo validasi tidak memicu side effect ke Mux.
+    const { valid, errors } = validateMoviePayload(payload);
+    if (!valid) {
+      return NextResponse.json({ error: "Validasi gagal.", details: errors }, { status: 422 });
+    }
+
     const muxInfo = await normalizeMuxMetadata({
       assetId: payload.mux_asset_id,
       playbackId: payload.mux_playback_id,
@@ -41,13 +51,26 @@ export async function POST(request) {
     if (!payload.duration && muxInfo.duration) {
       payload.duration = muxInfo.duration;
     }
-    const { valid, errors } = validateMoviePayload(payload);
 
-    if (!valid) {
-      return NextResponse.json({ error: "Validasi gagal.", details: errors }, { status: 422 });
+    let created;
+    try {
+      created = await createMovie(payload, session);
+    } catch (dbError) {
+      const orphanedAssetId = payload.mux_asset_id || null;
+      const cleanupGuidance = orphanedAssetId
+        ? `DB write gagal setelah asset Mux (${orphanedAssetId}) ditautkan. Jika asset tersebut baru diunggah dan tidak dipakai konten lain, bersihkan melalui DELETE /api/mux/assets/${orphanedAssetId} atau dashboard Mux.`
+        : "DB write gagal. Periksa apakah terdapat asset Mux yatim yang perlu dibersihkan di dashboard Mux.";
+      console.error("POST /api/movies DB write failed:", {
+        error: dbError?.message ?? dbError,
+        mux_asset_id: orphanedAssetId,
+        mux_playback_id: payload.mux_playback_id ?? null,
+        cleanupGuidance,
+      });
+      return NextResponse.json(
+        { error: "Gagal menyimpan movie ke database.", cleanupGuidance },
+        { status: 500 }
+      );
     }
-
-    const created = await createMovie(payload, session);
 
     if (created.mux_asset_id) {
       await updateAssetMetadata(created.mux_asset_id, {

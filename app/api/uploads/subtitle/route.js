@@ -3,14 +3,22 @@ import { requireRole } from "@/lib/session";
 import { purgeExpiredTempSubtitles, resolvePublicBaseUrl, saveTempSubtitle } from "@/lib/tempSubtitles";
 import { convertSrtToVtt } from "@/utils/subtitles";
 
-const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB (file mentah)
-const ALLOWED_SUBTITLE_MIME = new Set(["text/vtt", "text/plain", "application/x-subrip", "application/octet-stream", ""]);
+const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024; // 5 MB (file mentah & hasil konversi)
+const ALLOWED_SUBTITLE_MIME = new Set([
+  "text/vtt",
+  "text/plain",
+  "text/srt",
+  "application/srt",
+  "application/x-subrip",
+  "application/octet-stream",
+  "",
+]);
 
 function sanitizeSubtitleName(rawName) {
   return String(rawName || `subtitle-${Date.now()}.vtt`).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-// Upload subtitle TANPA Firebase Storage: teks VTT disimpan sementara di Firestore,
+// Upload subtitle TANPA Firebase Storage: teks VTT disimpan sementara di Postgres/memori,
 // lalu disajikan via URL publik bertoken agar bisa diambil Mux (lihat lib/tempSubtitles.js).
 export async function POST(request) {
   const { session, error: authError } = await requireRole();
@@ -26,22 +34,34 @@ export async function POST(request) {
       return NextResponse.json({ error: "File subtitle tidak ditemukan." }, { status: 400 });
     }
 
-    const origName = sanitizeSubtitleName(file.name);
-    const fileType = String(file.type || "").toLowerCase();
-    const hasValidExt = /\.(srt|vtt|txt)$/i.test(origName);
-    if (!hasValidExt && !ALLOWED_SUBTITLE_MIME.has(fileType)) {
-      return NextResponse.json({ error: "Format subtitle harus .srt atau .vtt." }, { status: 400 });
+    const rawFileName = typeof file.name === "string" ? file.name.trim() : "";
+    const hasValidExt = /\.(srt|vtt|txt)$/i.test(rawFileName);
+    const fileType = String(file.type || "").toLowerCase().split(";")[0].trim();
+    if (!hasValidExt || !ALLOWED_SUBTITLE_MIME.has(fileType)) {
+      return NextResponse.json({ error: "Format subtitle harus .srt, .vtt, atau .txt." }, { status: 400 });
     }
 
     const rawBuffer = Buffer.from(await file.arrayBuffer());
-    if (rawBuffer.byteLength === 0 || rawBuffer.byteLength > MAX_SUBTITLE_BYTES) {
-      return NextResponse.json({ error: "Ukuran file subtitle maksimal 5 MB." }, { status: 400 });
+    if (rawBuffer.byteLength === 0) {
+      return NextResponse.json({ error: "File subtitle tidak boleh kosong." }, { status: 400 });
+    }
+    if (rawBuffer.byteLength > MAX_SUBTITLE_BYTES) {
+      return NextResponse.json({ error: "Ukuran file subtitle maksimal 5 MB." }, { status: 413 });
     }
 
     const rawText = rawBuffer.toString("utf-8").replace(/^\uFEFF/, "");
+    if (rawBuffer.includes(0) || rawText.includes("\0")) {
+      return NextResponse.json({ error: "File biner tidak diizinkan sebagai subtitle." }, { status: 400 });
+    }
+
     const isVtt = /^WEBVTT/i.test(rawText.trimStart());
     const vtt = isVtt ? rawText : convertSrtToVtt(rawText);
-    const outName = origName.replace(/\.(srt|txt|vtt)$/i, "") + ".vtt";
+    if (Buffer.byteLength(vtt, "utf-8") > MAX_SUBTITLE_BYTES) {
+      return NextResponse.json({ error: "Ukuran subtitle melebihi batas maksimal 5 MB." }, { status: 413 });
+    }
+
+    const baseName = rawFileName.replace(/\.(srt|txt|vtt)$/i, "");
+    const outName = sanitizeSubtitleName(`${baseName || "subtitle"}.vtt`);
 
     purgeExpiredTempSubtitles().catch(() => {});
     const token = await saveTempSubtitle({ vtt, lang, label, name: outName, uid: session.uid });
@@ -52,6 +72,7 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("POST /api/uploads/subtitle", error);
-    return NextResponse.json({ error: error.message || "Gagal mengunggah subtitle." }, { status: 500 });
+    const status = error?.statusCode || 500;
+    return NextResponse.json({ error: error.message || "Gagal mengunggah subtitle." }, { status });
   }
 }

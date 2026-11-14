@@ -25,7 +25,7 @@ export default function AnalyticsTabs({
   const [activeTab, setActiveTab] = useState("performance");
 
   const ctrAverage = summary?.topContent?.length
-    ? summary.topContent.reduce((total, item) => total + (item.ctr ?? 0), 0) /
+    ? summary.topContent.reduce((total, item) => total + (item?.ctr ?? 0), 0) /
       summary.topContent.length
     : 0;
 
@@ -58,15 +58,15 @@ export default function AnalyticsTabs({
               <div>
                 <p className="text-xs uppercase tracking-wider text-slate-400">Total Views 14 hari</p>
                 <p className="mt-1 text-3xl font-semibold text-slate-100 tabular-nums">
-                  {formatNumber(summary.totals.views, { compact: true })}
+                  {formatNumber(summary?.totals?.views ?? 0, { compact: true })}
                 </p>
               </div>
               <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400 tabular-nums">
-                Growth {formatPercentage(summary.growth.views)}
+                Growth {formatPercentage(summary?.growth?.views ?? 0)}
               </span>
             </div>
             <div className="mt-6">
-              <AnalyticsChart data={summary.trend} />
+              <AnalyticsChart data={summary?.trend ?? []} />
             </div>
           </section>
 
@@ -77,28 +77,28 @@ export default function AnalyticsTabs({
                 <div className="rounded-xl border border-slate-800/70 bg-slate-950/50 p-4">
                   <dt className="text-xs uppercase tracking-wider text-slate-500">Watch Time</dt>
                   <dd className="mt-1 text-xl font-semibold text-slate-100 tabular-nums">
-                    {formatNumber(summary.totals.watchTime, { compact: true })} menit
+                    {formatNumber(summary?.totals?.watchTime ?? 0, { compact: true })} menit
                   </dd>
                   <p className="mt-1 text-xs text-slate-500">
-                    {formatPercentage(summary.growth.watchTime)} dari periode sebelumnya
+                    {formatPercentage(summary?.growth?.watchTime ?? 0)} dari periode sebelumnya
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800/70 bg-slate-950/50 p-4">
                   <dt className="text-xs uppercase tracking-wider text-slate-500">Subscribers</dt>
                   <dd className="mt-1 text-xl font-semibold text-slate-100 tabular-nums">
-                    {formatNumber(summary.totals.subscribers, { compact: true })}
+                    {formatNumber(summary?.totals?.subscribers ?? 0, { compact: true })}
                   </dd>
                   <p className="mt-1 text-xs text-slate-500">
-                    {formatPercentage(summary.growth.subscribers)} dari periode sebelumnya
+                    {formatPercentage(summary?.growth?.subscribers ?? 0)} dari periode sebelumnya
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800/70 bg-slate-950/50 p-4">
                   <dt className="text-xs uppercase tracking-wider text-slate-500">Revenue (IDR)</dt>
                   <dd className="mt-1 text-xl font-semibold text-slate-100 tabular-nums">
-                    Rp {formatNumber(summary.totals.revenue, { compact: true })}
+                    Rp {formatNumber(summary?.totals?.revenue ?? 0, { compact: true })}
                   </dd>
                   <p className="mt-1 text-xs text-slate-500">
-                    {formatPercentage(summary.growth.revenue)} dari periode sebelumnya
+                    {formatPercentage(summary?.growth?.revenue ?? 0)} dari periode sebelumnya
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800/70 bg-slate-950/50 p-4">
@@ -116,7 +116,7 @@ export default function AnalyticsTabs({
                 5 konten dengan performa terbaik berdasarkan views dan watch time.
               </p>
               <div className="mt-4">
-                <AnalyticsTable items={summary.topContent.slice(0, 5)} />
+                <AnalyticsTable items={(summary?.topContent ?? []).slice(0, 5)} />
               </div>
             </div>
           </section>
@@ -132,19 +132,19 @@ export default function AnalyticsTabs({
               <h3 className="text-lg font-semibold text-slate-100">Trending Film/Series</h3>
               <p className="text-xs text-slate-400">Top 10 konten dengan pertumbuhan views tertinggi.</p>
               <div className="mt-4 space-y-2.5">
-                {trending.map((item, index) => (
+                {(trending ?? []).map((item, index) => (
                   <div
-                    key={item.id}
+                    key={item?.id ?? index}
                     className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/60 px-4 py-3"
                   >
                     <div>
                       <p className="text-sm font-semibold text-slate-100">
-                        #{index + 1} {item.title}
+                        #{index + 1} {item?.title ?? "-"}
                       </p>
-                      <p className="text-xs text-slate-500 tabular-nums">{formatNumber(item.views)} views</p>
+                      <p className="text-xs text-slate-500 tabular-nums">{formatNumber(item?.views ?? 0)} views</p>
                     </div>
                     <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 tabular-nums">
-                      {formatPercentage(item.growth)}
+                      {formatPercentage(item?.growth ?? 0)}
                     </span>
                   </div>
                 ))}

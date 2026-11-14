@@ -10,6 +10,10 @@ const SettingsForm = ({ initialSettings }) => {
   const [contentItems, setContentItems] = useState([]);
 
   useEffect(() => {
+    if (initialSettings) setSettings(initialSettings);
+  }, [initialSettings]);
+
+  useEffect(() => {
     fetch("/api/content")
       .then((res) => res.json())
       .then((json) => {
@@ -19,14 +23,26 @@ const SettingsForm = ({ initialSettings }) => {
   }, []);
 
   const handleSelectHeroContent = (contentId) => {
+    if (!contentId) {
+      setSettings((prev) => ({
+        ...prev,
+        hero: {
+          ...prev.hero,
+          contentId: "",
+          title: "",
+          backgroundUrl: "",
+        },
+      }));
+      return;
+    }
     const picked = contentItems.find((item) => item.id === contentId);
     setSettings((prev) => ({
       ...prev,
       hero: {
         ...prev.hero,
         contentId,
-        title: picked?.title || prev.hero?.title || "",
-        backgroundUrl: picked?.backdropUrl || picked?.thumbnail || prev.hero?.backgroundUrl || "",
+        title: picked ? picked.title || "" : prev.hero?.title || "",
+        backgroundUrl: picked ? picked.backdropUrl || picked.thumbnail || "" : prev.hero?.backgroundUrl || "",
       },
     }));
   };

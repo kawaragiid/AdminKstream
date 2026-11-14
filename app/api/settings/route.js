@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchPlatformSettings, updatePlatformSettings } from "@/lib/settingsService";
 import { requireRole } from "@/lib/session";
+import { recordAuditLog } from "@/lib/auditService";
 import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function GET() {
@@ -17,12 +18,19 @@ export async function GET() {
 }
 
 export async function PUT(request) {
-  const { error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 
   try {
     const payload = await request.json();
     const updated = await updatePlatformSettings(payload);
+    await recordAuditLog({
+      actor: session,
+      action: "settings.update",
+      targetId: "platform",
+      targetType: "settings",
+      metadata: { keys: Object.keys(payload || {}) },
+    });
     return NextResponse.json({ data: updated });
   } catch (error) {
     console.error("PUT /api/settings", error);

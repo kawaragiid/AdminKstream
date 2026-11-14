@@ -54,7 +54,9 @@ const UserTable = ({ initialUsers = [] }) => {
     const staff = users.filter((u) =>
       [ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN, ADMIN_ROLES.EDITOR].includes(u.role)
     ).length;
-    const premiumActive = users.filter((u) => u.plan === USER_PLANS.PREMIUM || u.isActive).length;
+    const premiumActive = users.filter(
+      (u) => !u.disabled && u.status !== "suspend" && (u.plan === USER_PLANS.PREMIUM || u.isActive)
+    ).length;
     const suspended = users.filter((u) => u.disabled || u.status === "suspend").length;
     return { total, staff, premiumActive, suspended };
   }, [users]);
@@ -97,11 +99,11 @@ const UserTable = ({ initialUsers = [] }) => {
     setLoading(true);
     try {
       const response = await fetch("/api/users");
-      const result = await response.json();
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result.error ?? "Gagal memuat user");
+        throw new Error(result?.error ?? "Gagal memuat user");
       }
-      setUsers(result.data.users ?? []);
+      setUsers(result?.data?.users ?? []);
       setError(null);
     } catch (err) {
       setError(err.message);

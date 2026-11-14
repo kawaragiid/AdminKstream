@@ -30,6 +30,16 @@ export async function POST(request) {
 
   try {
     const payload = await request.json();
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
+    }
+
+    // Validasi payload sebelum memanggil Mux API agar typo validasi tidak memicu side effect ke Mux.
+    const validation = validateSeriesPayload(payload);
+    if (!validation.valid) {
+      return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
+    }
+
     const muxInfo = await normalizeMuxMetadata({
       assetId: payload.mux_asset_id,
       playbackId: payload.mux_playback_id,
@@ -58,12 +68,27 @@ export async function POST(request) {
       );
     }
 
-    const validation = validateSeriesPayload(payload);
-    if (!validation.valid) {
-      return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
+    let created;
+    try {
+      created = await createSeries(payload, session);
+    } catch (dbError) {
+      const orphanedAssetIds = [
+        payload.mux_asset_id,
+        ...(Array.isArray(payload.episodes) ? payload.episodes.map((ep) => ep?.mux_asset_id) : []),
+      ].filter(Boolean);
+      const cleanupGuidance = orphanedAssetIds.length
+        ? `DB write gagal setelah asset Mux (${orphanedAssetIds.join(", ")}) ditautkan. Jika asset tersebut baru diunggah dan tidak dipakai konten lain, bersihkan melalui DELETE /api/mux/assets/<assetId> atau dashboard Mux.`
+        : "DB write gagal. Periksa apakah terdapat asset Mux yatim yang perlu dibersihkan di dashboard Mux.";
+      console.error("POST /api/series DB write failed:", {
+        error: dbError?.message ?? dbError,
+        mux_asset_ids: orphanedAssetIds,
+        cleanupGuidance,
+      });
+      return NextResponse.json(
+        { error: "Gagal menyimpan series ke database.", cleanupGuidance },
+        { status: 500 }
+      );
     }
-
-    const created = await createSeries(payload, session);
 
     if (Array.isArray(created.episodes)) {
       await Promise.allSettled(

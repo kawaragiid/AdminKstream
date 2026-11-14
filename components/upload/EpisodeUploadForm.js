@@ -283,8 +283,26 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
     }
   };
 
+  const resolveAssetIdFromPlayback = async (playbackId) => {
+    const clean = normalizePlaybackValue(playbackId);
+    if (!clean) return "";
+    try {
+      const res = await fetch(`/api/mux/resolve-asset?playbackId=${encodeURIComponent(clean)}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) return "";
+      const resolvedId = json?.data?.assetId ?? "";
+      if (resolvedId) {
+        setMuxAssetId(resolvedId);
+      }
+      return resolvedId;
+    } catch {
+      return "";
+    }
+  };
+
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
+    const targetSub = subtitles?.[index];
     try {
       const text = await file.text();
       const isSrt = file.type === "application/x-subrip" || file.name.toLowerCase().endsWith(".srt");
@@ -294,6 +312,8 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
       });
       const fd = new FormData();
       fd.append("file", vttFile, vttFile.name);
+      fd.append("lang", targetSub?.lang || "id");
+      fd.append("label", targetSub?.label || "Bahasa Indonesia");
       const res = await fetch("/api/uploads/subtitle", { method: "POST", body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.data?.url) throw new Error(json?.error ?? "Gagal mengunggah subtitle.");
@@ -324,12 +344,16 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
 
     try {
       const cleanSubtitles = subtitles.filter((s) => /^https?:\/\//i.test(s.url || ""));
-      if (cleanSubtitles.length && muxAssetId) {
+      let resolvedAssetId = muxAssetId;
+      if (!resolvedAssetId && cleanPlayback) {
+        resolvedAssetId = await resolveAssetIdFromPlayback(cleanPlayback);
+      }
+      if (cleanSubtitles.length && resolvedAssetId) {
         await fetch("/api/mux/text-tracks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            assetId: muxAssetId,
+            assetId: resolvedAssetId,
             tracks: cleanSubtitles.map((s) => ({
               url: s.url,
               language_code: s.lang || "id",
@@ -348,7 +372,7 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
         thumbnail:
           thumbnail.trim() ||
           (cleanPlayback ? `https://image.mux.com/${cleanPlayback}/thumbnail.jpg?width=640` : null),
-        mux_asset_id: muxAssetId || null,
+        mux_asset_id: resolvedAssetId || null,
         mux_playback_id: cleanPlayback,
         mux_video_id: cleanPlayback,
         mux_upload_id: muxUploadId || null,
@@ -524,7 +548,19 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               Mux Playback ID
               <input
                 value={muxPlaybackId}
-                onChange={(e) => setMuxPlaybackId(e.target.value)}
+                onChange={(e) => {
+                  setMuxPlaybackId(e.target.value);
+                  if (muxAssetId) setMuxAssetId("");
+                }}
+                onBlur={async (e) => {
+                  const clean = normalizePlaybackValue(e.target.value);
+                  if (clean !== e.target.value) {
+                    setMuxPlaybackId(clean);
+                  }
+                  if (clean && !muxAssetId) {
+                    await resolveAssetIdFromPlayback(clean);
+                  }
+                }}
                 placeholder="Otomatis terisi setelah upload, atau tempel manual"
                 className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100"
               />

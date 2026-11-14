@@ -50,9 +50,18 @@ const Header = ({ session }) => {
           title="Pengaturan Profil"
           className="flex items-center gap-2.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-sm transition hover:border-slate-700"
         >
-          <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
-            {session?.displayName ? session.displayName.slice(0, 2).toUpperCase() : "AK"}
-          </span>
+          {session?.photoURL ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={session.photoURL}
+              alt={session.displayName || "Admin"}
+              className="h-9 w-9 rounded-full object-cover"
+            />
+          ) : (
+            <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
+              {session?.displayName ? session.displayName.slice(0, 2).toUpperCase() : "AK"}
+            </span>
+          )}
           <div className="hidden leading-tight sm:block pr-1">
             <p className="max-w-[140px] truncate text-xs font-medium text-slate-100">
               {session?.displayName ?? "Admin Kawaragi"}

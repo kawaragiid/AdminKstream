@@ -119,18 +119,27 @@ export async function PATCH(request) {
     }
 
     if (payload.action === "update-subscription") {
+      if (payload.plan !== undefined && !VALID_PLANS.has(payload.plan)) {
+        return NextResponse.json({ error: "Plan tidak valid." }, { status: 400 });
+      }
       const result = await updateUserSubscription(payload.uid, {
         plan: payload.plan,
         isActive: payload.isActive,
         expiresAt: payload.expiresAt,
         extendDays: payload.extendDays,
+        actorRole: session.role,
       });
       await recordAuditLog({
         actor: session,
         action: "user.update-subscription",
         targetId: payload.uid,
         targetType: "user",
-        metadata: { plan: payload.plan ?? undefined, isActive: payload.isActive ?? undefined, expiresAt: result.expiresAt ?? payload.expiresAt ?? undefined, extendDays: payload.extendDays ?? undefined },
+        metadata: {
+          plan: payload.plan ?? undefined,
+          isActive: payload.isActive ?? undefined,
+          expiresAt: payload.expiresAt === null ? null : (result.expiresAt ?? payload.expiresAt ?? undefined),
+          extendDays: payload.extendDays ?? undefined,
+        },
       });
       return NextResponse.json({ success: true, expiresAt: result.expiresAt ?? null });
     }

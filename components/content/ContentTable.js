@@ -126,6 +126,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
 
   const resetFilters = () => {
     setFilters(filtersDefault);
+    setTypeFilter("all");
     fetchData(filtersDefault);
   };
 

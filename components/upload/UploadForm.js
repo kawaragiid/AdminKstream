@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import MovieForm from "@/components/upload/MovieForm";
 import SeriesForm from "@/components/upload/SeriesForm";
 import EpisodeUploadForm from "@/components/upload/EpisodeUploadForm";
@@ -14,6 +14,8 @@ const tabs = [
 ];
 
 export default function UploadForm() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryTab = searchParams.get("tab");
   const querySeriesId = searchParams.get("seriesId") ?? "";
@@ -50,6 +52,15 @@ export default function UploadForm() {
     });
   };
 
+  const handleTabChange = (nextTab) => {
+    setActiveTab(nextTab);
+    setNotification(null);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", nextTab);
+    const targetPath = pathname || "/upload";
+    router.replace(`${targetPath}?${params.toString()}`, { scroll: false });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-2 text-sm">
@@ -60,10 +71,7 @@ export default function UploadForm() {
               <button
                 key={tab.type}
                 type="button"
-                onClick={() => {
-                  setActiveTab(tab.type);
-                  setNotification(null);
-                }}
+                onClick={() => handleTabChange(tab.type)}
                 className={`flex-1 min-w-[140px] rounded-xl px-4 py-2.5 text-xs font-semibold transition sm:text-sm ${
                   isActive
                     ? "bg-primary-600 text-white shadow-sm shadow-primary-600/30"

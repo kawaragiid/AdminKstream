@@ -14,6 +14,8 @@ import {
 } from "firebase/auth";
 
 const errorMessages = {
+  "auth/invalid-credential": "Email atau password salah. Periksa kembali kredensial Anda.",
+  "auth/invalid-email": "Format email tidak valid.",
   "auth/wrong-password": "Password salah. Coba lagi.",
   "auth/user-not-found": "Email tidak ditemukan.",
   "auth/too-many-requests": "Terlalu banyak percobaan. Coba beberapa saat lagi.",

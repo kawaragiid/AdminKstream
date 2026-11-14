@@ -2,7 +2,15 @@
 
 import { useRef, useState } from "react";
 
-const DATABASE_TABLES = ["movies", "series", "platform_settings"];
+const DATABASE_TABLES = [
+  "movies",
+  "series",
+  "platform_settings",
+  "users",
+  "analytics_snapshots",
+  "audit_logs",
+  "notifications",
+];
 
 const sampleRecord = JSON.stringify(
   {
@@ -32,29 +40,20 @@ const ToolsPanel = () => {
         throw new Error(result.error ?? "Gagal export");
       }
 
-      if (format === "csv") {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${type}-export.${format}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-      } else {
-        const data = await response.json();
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${type}-export.json`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
-        setMessage({ type: "success", text: `File ${type}-export.json berhasil diunduh.` });
-      }
+      const filename = format === "csv" ? `${type}-export.${format}` : `${type}-export.json`;
+      const blob =
+        format === "csv"
+          ? await response.blob()
+          : new Blob([JSON.stringify(await response.json(), null, 2)], { type: "application/json" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setMessage({ type: "success", text: `File ${filename} berhasil diunduh.` });
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     }
@@ -118,7 +117,8 @@ const ToolsPanel = () => {
   };
 
   const importDatabase = async (event) => {
-    const file = event.target.files?.[0];
+    const inputEl = event.target;
+    const file = inputEl?.files?.[0];
     if (!file) return;
     setLoading(true);
     setMessage(null);
@@ -140,7 +140,7 @@ const ToolsPanel = () => {
       setMessage({ type: "error", text: error.message });
     } finally {
       setLoading(false);
-      event.target.value = "";
+      if (inputEl) inputEl.value = "";
     }
   };
 

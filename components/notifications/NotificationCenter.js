@@ -75,7 +75,7 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
     if (!unread.length) return;
     setMarkingAll(true);
     try {
-      await Promise.all(
+      const responses = await Promise.all(
         unread.map((n) =>
           fetch("/api/notifications", {
             method: "PATCH",
@@ -84,6 +84,17 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
           })
         )
       );
+      if (!responses.every((r) => r.ok)) {
+        const succeededIds = new Set(
+          unread.filter((_, idx) => responses[idx]?.ok).map((n) => n.id)
+        );
+        if (succeededIds.size > 0) {
+          setNotifications((prev) =>
+            prev.map((n) => (succeededIds.has(n.id) ? { ...n, read: true } : n))
+          );
+        }
+        throw new Error("Gagal menandai sebagian atau semua notifikasi sebagai dibaca.");
+      }
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setError(null);
     } catch (err) {

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { addMultipleTextTracks, isMuxConfigured, resolveAssetId } from "@/lib/muxService";
 import { requireRole } from "@/lib/session";
+import { recordAuditLog } from "@/lib/auditService";
 
 export async function POST(request) {
-  const { error: authError } = await requireRole();
+  const { session, error: authError } = await requireRole();
   if (authError) return authError;
 
   try {
@@ -53,6 +54,17 @@ export async function POST(request) {
     }
 
     // Mux fetches .vtt asynchronously after track creation; rely on TTL expiry to clean up temp_subtitles.
+    await recordAuditLog({
+      actor: session,
+      action: "mux.text-tracks.create",
+      targetId: assetId,
+      targetType: "mux-asset",
+      metadata: {
+        trackCount: filtered.length,
+        languages: filtered.map((t) => t.language_code ?? t.lang ?? "en"),
+      },
+    });
+
     return NextResponse.json({ data: results, muxConfigured: isMuxConfigured, tempCleaned: false });
   } catch (error) {
     console.error("POST /api/mux/text-tracks", error);
