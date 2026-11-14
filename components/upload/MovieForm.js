@@ -36,6 +36,8 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const [subtitleUploadStatus, setSubtitleUploadStatus] = useState((initialData?.subtitles ?? []).some(isValidSubtitleEntry) ? "success" : "idle");
   const [subtitleSyncStatus, setSubtitleSyncStatus] = useState((initialData?.subtitles ?? []).some(isValidSubtitleEntry) ? "success" : "idle");
   const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
+  const [studioStep, setStudioStep] = useState(1);
+  const [isDragging, setIsDragging] = useState(false);
 
   const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
   const lastFetchedPlaybackRef = useRef(null);
@@ -644,296 +646,494 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
     }
   };
 
+  const previewThumb =
+    formData.thumbnail?.trim() ||
+    (formData.mux_playback_id || formData.mux_video_id
+      ? `https://image.mux.com/${formData.mux_playback_id || formData.mux_video_id}/thumbnail.jpg?time=5`
+      : "");
+
+  const studioSteps = [
+    { id: 1, label: "1. Video & Detail" },
+    { id: 2, label: "2. Subtitle & Trailer" },
+    { id: 3, label: "3. Tinjau & Publikasikan" },
+  ];
+
+  const onDropVideo = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file && !["uploading", "hashing"].includes(uploadStatus)) {
+      setCurrentVideoFile(file);
+      handleDirectUpload(file);
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
-        <label className="block text-sm text-slate-300">
-          Judul Movie
-          <input
-            value={formData.title ?? ""}
-            onChange={(event) => setFormData((prev) => ({ ...prev, title: event.target.value }))}
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-            required
-          />
-          {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
-        </label>
-        <label className="block text-sm text-slate-300">
-          Kategori
-          <select
-            value={formData.category ?? categoryOptions[0]}
-            onChange={(event) => setFormData((prev) => ({ ...prev, category: event.target.value }))}
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {categoryOptions.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
-          {errors.category && <p className="mt-1 text-xs text-rose-400">{errors.category}</p>}
-        </label>
+    <form onSubmit={handleSubmit} className="space-y-6">
+      {/* YouTube Studio Stepper */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-4">
+        {studioSteps.map((step) => {
+          const isActive = studioStep === step.id;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => setStudioStep(step.id)}
+              className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                isActive
+                  ? "bg-primary-600/20 text-primary-200 border border-primary-500/40"
+                  : "border border-slate-800 bg-slate-950/60 text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {step.label}
+            </button>
+          );
+        })}
       </div>
-      <label className="block text-sm text-slate-300">
-        <span className="inline-block mb-1">Deskripsi / Sinopsis</span>
-        <textarea
-          value={formData.description ?? ""}
-          onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
-          rows={4}
-          disabled={!videoReady}
-          className="mt-1 w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200 outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-          required
-        />
-        {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
-      </label>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="text-sm text-slate-300">
-          Thumbnail URL (opsional)
-          <input
-            value={formData.thumbnail ?? ""}
-            onChange={(event) => setFormData((prev) => ({ ...prev, thumbnail: event.target.value }))}
-            placeholder="https://..."
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-          <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            <button
-              type="button"
-              disabled={!(formData.mux_playback_id || formData.mux_video_id)}
-              onClick={() => {
-                const pid = formData.mux_playback_id || formData.mux_video_id;
-                if (pid) setFormData((prev) => ({ ...prev, thumbnail: `https://image.mux.com/${pid}/thumbnail.jpg?time=5` }));
-              }}
-              className="text-primary-200 hover:text-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Pakai thumbnail dari video (Mux)
-            </button>
-            <span>· Kosongkan = otomatis dari Mux</span>
-          </span>
-        </label>
-        <label className="text-sm text-slate-300">
-          Trailer URL / Playback ID (opsional)
-          <input
-            value={formData.trailer ?? ""}
-            onChange={(event) => setFormData((prev) => ({ ...prev, trailer: event.target.value }))}
-            placeholder="https://stream.mux.com/..."
-            disabled={!videoReady}
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-          />
-        </label>
-      </div>
-      <div className="space-y-3 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-200">Playback ID Mux</p>
-            <p className="text-xs text-slate-500">Isi manual atau upload video untuk mendapatkan playback ID.</p>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setUploadMode("upload")}
-              className={`rounded-full px-3 py-1 ${uploadMode === "upload" ? "bg-primary-600 text-white" : "border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200"}`}
-            >
-              Upload
-            </button>
-            <button
-              type="button"
-              onClick={() => setUploadMode("manual")}
-              className={`rounded-full px-3 py-1 ${uploadMode === "manual" ? "bg-primary-600 text-white" : "border border-slate-700 text-slate-300 hover:border-primary-500 hover:text-primary-200"}`}
-            >
-              Manual
-            </button>
-          </div>
-        </div>
 
-        {uploadMode === "upload" && (
-          <div className="flex items-center gap-3 text-xs">
-            <label className="text-primary-200 hover:text-primary-100">
-              <input type="file" accept=".mp4,.mkv,video/mp4,video/x-matroska" onChange={(event) => setCurrentVideoFile(event.target.files?.[0] ?? null)} disabled={["uploading", "hashing"].includes(uploadStatus)} className="hidden" />
-              <span className="cursor-pointer">Pilih video</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => currentVideoFile && handleDirectUpload(currentVideoFile)}
-              disabled={["uploading", "hashing"].includes(uploadStatus) || !currentVideoFile}
-              className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {["uploading", "hashing"].includes(uploadStatus) ? "Mengunggah..." : "Upload ke Mux"}
-            </button>
-            {currentVideoFile && <span className="text-slate-500">{currentVideoFile.name}</span>}
-          </div>
-        )}
-        {uploadMode === "upload" && ["uploading", "hashing"].includes(uploadStatus) && (
-          <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
-            <div className="h-2 bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
-          </div>
-        )}
-        <input
-          value={formData.mux_playback_id ?? formData.mux_video_id ?? ""}
-          onChange={(event) => {
-            const value = event.target.value?.trim();
-            setFormData((prev) => ({
-              ...prev,
-              mux_playback_id: value,
-              mux_video_id: value,
-              mux_asset_id: null, // Reset asset ID when manually changing playback ID
-            }));
-            if (value) {
-              setUploadStatus("success");
-            }
-          }}
-          placeholder="Playback ID dari Mux"
-          className="w-full rounded-xl sm:rounded-2xl border border-slate-800 bg-slate-950 px-3 sm:px-4 py-2 sm:py-3 text-sm text-slate-200"
-          required
-        />
-        {(errors.mux_playback_id || errors.mux_video_id) && <p className="text-xs text-rose-400">{errors.mux_playback_id || errors.mux_video_id}</p>}
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="text-sm text-slate-300">
-          Trailer Start (detik)
-          <input
-            type="number"
-            min={0}
-            step="0.1"
-            value={trailerStart}
-            onChange={(e) => setTrailerStart(e.target.value)}
-            placeholder="mis: 0"
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
-          />
-        </label>
-        <label className="text-sm text-slate-300">
-          Trailer End (detik)
-          <input
-            type="number"
-            min={0}
-            step="0.1"
-            value={trailerEnd}
-            onChange={(e) => setTrailerEnd(e.target.value)}
-            placeholder="mis: 10"
-            className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
-          />
-        </label>
-      </div>
-      {!videoReady && <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">Unggah video ke Mux terlebih dahulu untuk membuka pengisian metadata dan subtitle.</div>}
-      <div className="space-y-3 rounded-xl sm:rounded-3xl border border-slate-800/60 bg-slate-900/60 p-3 sm:p-4">
-        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-slate-200">Subtitle Multi Bahasa</p>
-            <p className="text-xs text-slate-500">Tambahkan URL subtitle (VTT). File SRT akan otomatis dikonversi.</p>
-          </div>
-          <button
-            type="button"
-            onClick={addSubtitle}
-            disabled={!videoReady}
-            className="w-full sm:w-auto rounded-lg sm:rounded-full border border-slate-700 px-3 py-2 sm:py-1.5 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Tambah Subtitle
-          </button>
-        </div>
-
-        {(formData.subtitles ?? []).map((subtitle, index) => (
-          <div key={index} className="space-y-2 rounded-xl sm:rounded-2xl border border-slate-800/60 bg-slate-950/60 p-3 sm:p-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-              <select
-                value={subtitle.lang ?? "en"}
-                onChange={(event) => updateSubtitle(index, "lang", event.target.value)}
-                disabled={!videoReady}
-                className="w-full sm:w-32 rounded-lg sm:rounded-xl border border-slate-800 bg-slate-950 px-2 sm:px-3 py-1.5 sm:py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+      <div className="grid gap-6 lg:grid-cols-[3fr_2fr] items-start">
+        {/* Kolom Kiri: Form Studio */}
+        <div className="space-y-5">
+          {studioStep === 1 && (
+            <>
+              {/* Dropzone Upload Video */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={onDropVideo}
+                className={`rounded-2xl border-2 border-dashed p-5 transition ${
+                  isDragging
+                    ? "border-primary-500 bg-primary-500/10"
+                    : "border-slate-800 bg-slate-950/60"
+                }`}
               >
-                {SUBTITLE_LANGUAGES.map((lang) => (
-                  <option key={lang.code} value={lang.code}>
-                    {lang.label}
-                  </option>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-100">Sumber Video Mux</p>
+                    <p className="text-xs text-slate-400">
+                      Tarik file video ke sini atau isi Playback ID manual.
+                    </p>
+                  </div>
+                  <div className="inline-flex rounded-lg border border-slate-800 bg-slate-900 p-0.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode("upload")}
+                      className={`rounded-md px-3 py-1 font-medium ${
+                        uploadMode === "upload" ? "bg-primary-600 text-white" : "text-slate-400"
+                      }`}
+                    >
+                      Upload File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUploadMode("manual")}
+                      className={`rounded-md px-3 py-1 font-medium ${
+                        uploadMode === "manual" ? "bg-primary-600 text-white" : "text-slate-400"
+                      }`}
+                    >
+                      Playback ID
+                    </button>
+                  </div>
+                </div>
+
+                {uploadMode === "upload" && (
+                  <div className="flex flex-col items-center justify-center rounded-xl border border-slate-800/80 bg-slate-900/50 px-4 py-6 text-center space-y-3">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-xl">
+                      ⬆️
+                    </span>
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-slate-200">
+                        {currentVideoFile ? currentVideoFile.name : "Pilih file MP4 atau MKV untuk diupload ke Mux"}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Otomatis menggunakan Basic Quality ($0 encoding) &amp; maksimal 1080p.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2.5">
+                      <label className="cursor-pointer rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-200 hover:border-primary-500">
+                        <input
+                          type="file"
+                          accept=".mp4,.mkv,video/mp4,video/x-matroska"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0] ?? null;
+                            setCurrentVideoFile(file);
+                          }}
+                          disabled={["uploading", "hashing"].includes(uploadStatus)}
+                          className="hidden"
+                        />
+                        Pilih File Video
+                      </label>
+                      {currentVideoFile && (
+                        <button
+                          type="button"
+                          onClick={() => handleDirectUpload(currentVideoFile)}
+                          disabled={["uploading", "hashing"].includes(uploadStatus)}
+                          className="rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500 disabled:opacity-50"
+                        >
+                          {["uploading", "hashing"].includes(uploadStatus) ? `Mengunggah ${uploadProgress}%` : "Mulai Upload"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-3">
+                  <input
+                    value={formData.mux_playback_id ?? formData.mux_video_id ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value?.trim();
+                      setFormData((prev) => ({
+                        ...prev,
+                        mux_playback_id: value,
+                        mux_video_id: value,
+                        mux_asset_id: null,
+                      }));
+                      if (value) setUploadStatus("success");
+                    }}
+                    placeholder="Playback ID Mux (terisi otomatis setelah upload)"
+                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-xs text-slate-200"
+                    required
+                  />
+                  {(errors.mux_playback_id || errors.mux_video_id) && (
+                    <p className="mt-1 text-xs text-rose-400">{errors.mux_playback_id || errors.mux_video_id}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Detail Metadata (bisa diisi sembari upload berjalan) */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block text-xs font-medium text-slate-300">
+                  Judul Movie *
+                  <input
+                    value={formData.title ?? ""}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, title: event.target.value }))}
+                    placeholder="Masukkan judul movie"
+                    className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-200 outline-none focus:border-primary-500"
+                    required
+                  />
+                  {errors.title && <p className="mt-1 text-xs text-rose-400">{errors.title}</p>}
+                </label>
+
+                <label className="block text-xs font-medium text-slate-300">
+                  Kategori *
+                  <select
+                    value={formData.category ?? categoryOptions[0]}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, category: event.target.value }))}
+                    className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-200 outline-none focus:border-primary-500"
+                  >
+                    {categoryOptions.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.category && <p className="mt-1 text-xs text-rose-400">{errors.category}</p>}
+                </label>
+              </div>
+
+              <label className="block text-xs font-medium text-slate-300">
+                Deskripsi / Sinopsis *
+                <textarea
+                  value={formData.description ?? ""}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, description: event.target.value }))}
+                  rows={4}
+                  placeholder="Ceritakan sinopsis singkat movie..."
+                  className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-200 outline-none focus:border-primary-500"
+                  required
+                />
+                {errors.description && <p className="mt-1 text-xs text-rose-400">{errors.description}</p>}
+              </label>
+
+              <label className="block text-xs font-medium text-slate-300">
+                Thumbnail URL (opsional — kosongkan untuk otomatis dari Mux)
+                <input
+                  value={formData.thumbnail ?? ""}
+                  onChange={(event) => setFormData((prev) => ({ ...prev, thumbnail: event.target.value }))}
+                  placeholder="https://..."
+                  className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-200"
+                />
+              </label>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setStudioStep(2)}
+                  className="rounded-xl bg-slate-800 px-5 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                >
+                  Lanjut: Subtitle &amp; Trailer →
+                </button>
+              </div>
+            </>
+          )}
+
+          {studioStep === 2 && (
+            <>
+              <div className="rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">Trailer Clip (Hemat Biaya)</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="text-xs text-slate-300">
+                    Trailer Start (detik)
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={trailerStart}
+                      onChange={(e) => setTrailerStart(e.target.value)}
+                      placeholder="mis: 0"
+                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200"
+                    />
+                  </label>
+                  <label className="text-xs text-slate-300">
+                    Trailer End (detik)
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={trailerEnd}
+                      onChange={(e) => setTrailerEnd(e.target.value)}
+                      placeholder="mis: 15"
+                      className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200"
+                    />
+                  </label>
+                </div>
+                <label className="block text-xs text-slate-300">
+                  Atau Trailer URL Manual (opsional)
+                  <input
+                    value={formData.trailer ?? ""}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, trailer: event.target.value }))}
+                    placeholder="https://stream.mux.com/..."
+                    className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200"
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">Subtitle Multi Bahasa</p>
+                    <p className="text-xs text-slate-500">File SRT otomatis dikonversi ke VTT.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addSubtitle}
+                    disabled={!videoReady}
+                    className="rounded-xl border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:border-primary-500 disabled:opacity-50"
+                  >
+                    + Tambah Subtitle
+                  </button>
+                </div>
+
+                {(formData.subtitles ?? []).map((subtitle, index) => (
+                  <div key={index} className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={subtitle.lang ?? "en"}
+                        onChange={(event) => updateSubtitle(index, "lang", event.target.value)}
+                        disabled={!videoReady}
+                        className="rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200"
+                      >
+                        {SUBTITLE_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={subtitle.label ?? ""}
+                        onChange={(event) => updateSubtitle(index, "label", event.target.value)}
+                        placeholder="Label"
+                        disabled={!videoReady}
+                        className="flex-1 rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSubtitle(index)}
+                        disabled={!videoReady}
+                        className="rounded-lg px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-500/10"
+                      >
+                        Hapus
+                      </button>
+                    </div>
+                    <input
+                      value={subtitle.url ?? ""}
+                      onChange={(event) => updateSubtitle(index, "url", event.target.value)}
+                      placeholder="https://..."
+                      disabled={!videoReady}
+                      className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-1.5 text-xs text-slate-200"
+                    />
+                    <label className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Upload .vtt / .srt</span>
+                      <input
+                        type="file"
+                        accept=".vtt,.srt,text/vtt,application/x-subrip"
+                        onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])}
+                        className="text-xs"
+                        disabled={!videoReady}
+                      />
+                    </label>
+                  </div>
                 ))}
-              </select>
-              <input
-                value={subtitle.label ?? ""}
-                onChange={(event) => updateSubtitle(index, "label", event.target.value)}
-                placeholder="Label ditampilkan"
-                disabled={!videoReady}
-                className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              <button
-                type="button"
-                onClick={() => removeSubtitle(index)}
-                disabled={!videoReady}
-                className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Hapus
-              </button>
-            </div>
-            <input
-              value={subtitle.url ?? ""}
-              onChange={(event) => updateSubtitle(index, "url", event.target.value)}
-              placeholder="https://..."
-              disabled={!videoReady}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <label className="flex items-center justify-between text-xs text-slate-400">
-              <span>Upload file .vtt / .srt</span>
-              <input type="file" accept=".vtt,.srt,text/vtt,application/x-subrip" onChange={(event) => handleSubtitleFile(index, event.target.files?.[0])} className="text-xs" disabled={!videoReady} />
-            </label>
-          </div>
-        ))}
-        {errors.subtitles && Array.isArray(errors.subtitles) && <p className="text-xs text-rose-400">Periksa kembali data subtitle.</p>}
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-2xl border border-slate-800/60 bg-slate-950/40 px-4 py-3 text-xs text-slate-400 gap-3">
-          <div>
-            <p className="font-medium text-slate-200">Sinkronisasi Subtitle</p>
-            <p className="text-[11px] text-slate-500">Pastikan URL subtitle publik sebelum mengirim ke Mux. Subtitle lama akan tetap tersedia.</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/50 px-3.5 py-2.5 text-xs">
+                  <span className="text-slate-300">Kirim subtitle ke Mux setelah URL terisi</span>
+                  <button
+                    type="button"
+                    onClick={handleSubtitleSync}
+                    disabled={!canSyncSubtitles || isSyncingSubtitles}
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 font-semibold text-slate-200 hover:border-primary-500 disabled:opacity-50"
+                  >
+                    {isSyncingSubtitles ? "Mengirim..." : "Kirim Subtitle ke Mux"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setStudioStep(1)}
+                  className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white"
+                >
+                  ← Kembali
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudioStep(3)}
+                  className="rounded-xl bg-slate-800 px-5 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                >
+                  Lanjut: Tinjau →
+                </button>
+              </div>
+            </>
+          )}
+
+          {studioStep === 3 && (
+            <div className="space-y-4 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-5">
+              <h3 className="text-sm font-semibold text-slate-100">Checklist Sebelum Publikasi</h3>
+              <ul className="space-y-2 text-xs">
+                <li className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-3.5 py-2.5">
+                  <span className="text-slate-300">Video Mux Siap</span>
+                  <span className={videoReady ? "font-semibold text-emerald-400" : "font-semibold text-amber-400"}>
+                    {videoReady ? "✓ Siap" : "Belum selesai"}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-3.5 py-2.5">
+                  <span className="text-slate-300">Judul &amp; Deskripsi</span>
+                  <span className={formData.title && formData.description ? "font-semibold text-emerald-400" : "font-semibold text-amber-400"}>
+                    {formData.title && formData.description ? "✓ Lengkap" : "Belum lengkap"}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-3.5 py-2.5">
+                  <span className="text-slate-300">Subtitle</span>
+                  <span className={subtitlesSyncReady ? "font-semibold text-emerald-400" : "font-semibold text-amber-400"}>
+                    {subtitlesSyncReady ? "✓ Siap / Tidak ada" : "Perlu kirim ke Mux"}
+                  </span>
+                </li>
+              </ul>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStudioStep(2)}
+                  className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white"
+                >
+                  ← Kembali
+                </button>
+                <div className="flex items-center gap-2">
+                  {initialData?.id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData({ ...defaultMovie, ...initialData });
+                        setErrors({});
+                        setMessage(null);
+                      }}
+                      className="rounded-xl border border-slate-700 px-4 py-2.5 text-xs text-slate-300 hover:text-white"
+                    >
+                      Reset
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !canSaveMovie}
+                    className="rounded-xl bg-primary-600 px-6 py-2.5 text-xs font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+                  >
+                    {isSubmitting ? "Menyimpan..." : submitLabel}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {message && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-xs ${
+                message.type === "success"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                  : message.type === "error"
+                  ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
+                  : message.type === "warning"
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
+                  : "border-slate-700 bg-slate-800/60 text-slate-200"
+              }`}
+            >
+              {message.text}
+            </div>
+          )}
+        </div>
+
+        {/* Kolom Kanan: Sticky Studio Preview & Status Card */}
+        <aside className="lg:sticky lg:top-24 rounded-2xl border border-slate-800/80 bg-slate-950/70 p-4 space-y-4">
+          <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+            {previewThumb ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewThumb} alt="Preview" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center text-xs text-slate-500">
+                <span className="text-2xl mb-1">🎬</span>
+                <span>Preview Video</span>
+              </div>
+            )}
+            <span className="absolute right-2 top-2 rounded-full border border-emerald-500/35 bg-black/75 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300 backdrop-blur-md">
+              Basic • 1080p Max
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={handleSubtitleSync}
-            disabled={!canSyncSubtitles || isSyncingSubtitles}
-            className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSyncingSubtitles ? "Mengirim..." : "Kirim Subtitle ke Mux"}
-          </button>
-        </div>
-      </div>
-      {message && (
-        <div
-          className={`rounded-xl sm:rounded-2xl border px-3 sm:px-4 py-2.5 sm:py-3 text-sm ${
-            message.type === "success"
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-              : message.type === "error"
-              ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
-              : message.type === "warning"
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
-              : "border-slate-700 bg-slate-800/60 text-slate-200"
-          } sticky bottom-0 z-10 backdrop-blur-sm`}
-        >
-          {message.text}
-        </div>
-      )}{" "}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
-        <button
-          type="submit"
-          disabled={isSubmitting || !canSaveMovie}
-          title={!canSaveMovie ? "Selesaikan tahap upload video dan sinkronisasi subtitle terlebih dahulu." : undefined}
-          className="rounded-xl sm:rounded-full bg-primary-600 px-4 sm:px-6 py-2.5 sm:py-3 text-sm font-semibold text-white transition hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700 w-full sm:w-auto"
-        >
-          {isSubmitting ? "Menyimpan..." : submitLabel}
-        </button>
-        {initialData?.id && (
-          <button
-            type="button"
-            onClick={() => {
-              setFormData({ ...defaultMovie, ...initialData });
-              setErrors({});
-              setMessage(null);
-              setUploadStatus(initialData?.mux_playback_id || initialData?.mux_video_id ? "success" : "idle");
-              const hasInitialSubs = (initialData?.subtitles ?? []).some(isValidSubtitleEntry);
-              setSubtitleUploadStatus(hasInitialSubs ? "success" : "idle");
-              setSubtitleSyncStatus(hasInitialSubs ? "success" : "idle");
-            }}
-            className="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
-          >
-            Reset perubahan
-          </button>
-        )}
+
+          {["uploading", "hashing"].includes(uploadStatus) && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-300">
+                  {uploadStatus === "hashing" ? "Memeriksa duplikat..." : "Mengunggah ke Mux..."}
+                </span>
+                <span className="font-semibold text-primary-300 tabular-nums">{uploadProgress}%</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div className="h-full bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2 text-xs">
+            <div>
+              <p className="text-slate-500">Judul</p>
+              <p className="font-semibold text-slate-100 truncate">{formData.title || "Belum ada judul"}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Playback ID</p>
+              <p className="break-all font-mono text-[11px] text-slate-300">
+                {formData.mux_playback_id || formData.mux_video_id || "Menunggu upload..."}
+              </p>
+            </div>
+            {formData.mux_asset_id && (
+              <div>
+                <p className="text-slate-500">Asset ID</p>
+                <p className="break-all font-mono text-[11px] text-slate-400">{formData.mux_asset_id}</p>
+              </div>
+            )}
+          </div>
+        </aside>
       </div>
     </form>
   );

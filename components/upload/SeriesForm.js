@@ -1130,10 +1130,22 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         </div>
       </form>
 
-      {/* EPISODE EDITOR */}
+      {/* EPISODE EDITOR (Studio Card) */}
       {editingEpisodeIndex !== null && (
-        <div className="rounded-3xl border border-primary-500/30 bg-primary-500/5 p-6">
-          <h4 className="text-sm font-semibold text-slate-100">{episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode"}</h4>
+        <div className="rounded-2xl border border-primary-500/35 bg-slate-950/80 p-6 space-y-5 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+            <div>
+              <h4 className="text-base font-semibold text-slate-100">
+                {episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode Baru"}
+              </h4>
+              <p className="text-xs text-slate-400">
+                Upload video otomatis menggunakan Mux Basic Quality ($0 encoding) &amp; Max 1080p.
+              </p>
+            </div>
+            <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+              Basic • 1080p Max
+            </span>
+          </div>
 
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-4">
@@ -1195,8 +1207,14 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
             </div>
 
             {uploadProgress > 0 && (
-              <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-800">
-                <div className="h-2 bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+              <div className="space-y-1.5 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-300">Mengunggah episode ke Mux...</span>
+                  <span className="font-semibold text-primary-300 tabular-nums">{uploadProgress}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-2 bg-primary-500 transition-all" style={{ width: `${uploadProgress}%` }} />
+                </div>
               </div>
             )}
 

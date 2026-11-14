@@ -1,31 +1,17 @@
+import Link from "next/link";
 import StatCard from "@/components/dashboard/StatCard";
-import AnalyticsChart from "@/components/analytics/AnalyticsChart";
-import AnalyticsTable from "@/components/analytics/AnalyticsTable";
-import ActiveUsersCard from "@/components/analytics/ActiveUsersCard";
-import AudienceSplitPie from "@/components/analytics/AudienceSplitPie";
-import AverageWatchCard from "@/components/analytics/AverageWatchCard";
 import MuxCostMonitor from "@/components/analytics/MuxCostMonitor";
+import { fetchAnalyticsSummary } from "@/lib/analyticsService";
 import { getMuxCostReport } from "@/lib/muxService";
-import {
-  fetchAnalyticsSummary,
-  fetchTrendingSeries,
-  fetchActiveUsers,
-  fetchAudienceSplit,
-  fetchAverageWatchDuration,
-} from "@/lib/analyticsService";
-import { formatNumber, formatPercentage } from "@/utils/formatters";
+import { formatNumber } from "@/utils/formatters";
 
 export const metadata = {
   title: "Dashboard",
 };
 
 export default async function DashboardPage() {
-  const [summary, trending, activeUsers, audienceSplit, averageWatch, muxReport] = await Promise.all([
+  const [summary, muxReport] = await Promise.all([
     fetchAnalyticsSummary(),
-    fetchTrendingSeries({ limit: 5 }),
-    fetchActiveUsers(),
-    fetchAudienceSplit(),
-    fetchAverageWatchDuration(),
     getMuxCostReport().catch(() => null),
   ]);
 
@@ -62,70 +48,54 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
           <StatCard key={stat.label} {...stat} />
         ))}
       </section>
 
-      {muxReport && <MuxCostMonitor initialReport={muxReport} />}
+      {muxReport && <MuxCostMonitor initialReport={muxReport} mode="summary" />}
 
-      <section className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-100">Trend penayangan</h2>
-              <p className="text-xs text-slate-400">14 hari terakhir</p>
-            </div>
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-              Live
-            </span>
-          </div>
-          <div className="mt-6">
-            <AnalyticsChart data={summary.trend} />
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-6">
-          <h2 className="text-lg font-semibold text-slate-100">Top konten</h2>
-          <p className="text-xs text-slate-400">Konten dengan performa terbaik saat ini.</p>
-          <div className="mt-4">
-            <AnalyticsTable items={summary.topContent.slice(0, 5)} />
-          </div>
-        </div>
-      </section>
+      <section className="grid gap-4 sm:grid-cols-3">
+        <Link
+          href="/upload"
+          className="group rounded-2xl border border-slate-800/80 bg-slate-900/75 p-5 transition hover:border-primary-500/40 hover:bg-slate-900"
+        >
+          <p className="text-xs font-medium uppercase tracking-wider text-primary-300">Aksi Cepat</p>
+          <p className="mt-1 text-base font-semibold text-slate-100 group-hover:text-white">
+            + Upload Movie / Series
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Upload langsung ke Mux dengan Basic Quality &amp; Max 1080p.
+          </p>
+        </Link>
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <ActiveUsersCard activeUsers={activeUsers} />
-        <AverageWatchCard duration={averageWatch} />
-      </section>
+        <Link
+          href="/content"
+          className="group rounded-2xl border border-slate-800/80 bg-slate-900/75 p-5 transition hover:border-slate-700 hover:bg-slate-900"
+        >
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Katalog</p>
+          <p className="mt-1 text-base font-semibold text-slate-100 group-hover:text-white">
+            Kelola Konten &amp; Episode
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Cek status Mux, edit metadata, subtitle, dan playback ID.
+          </p>
+        </Link>
 
-      <section className="grid gap-6 lg:grid-cols-[2fr_3fr]">
-        <AudienceSplitPie split={audienceSplit} />
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-6">
-          <h3 className="text-lg font-semibold text-slate-100">Trending Film/Series</h3>
-          <p className="text-xs text-slate-400">Top 5 konten dengan pertumbuhan views tertinggi.</p>
-          <div className="mt-4 space-y-3">
-            {trending.map((item, index) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-950/60 px-4 py-3 transition-colors hover:border-slate-700"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-slate-100">
-                    #{index + 1} {item.title}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {formatNumber(item.views)} views total
-                  </p>
-                </div>
-                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 tabular-nums">
-                  {formatPercentage(item.growth)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Link
+          href="/analytics"
+          className="group rounded-2xl border border-slate-800/80 bg-slate-900/75 p-5 transition hover:border-slate-700 hover:bg-slate-900"
+        >
+          <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Analitik Mendalam</p>
+          <p className="mt-1 text-base font-semibold text-slate-100 group-hover:text-white">
+            Lihat Chart &amp; Audit Mux
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Trend 14 hari, Top Konten, Active Users, dan rincian asset Mux.
+          </p>
+        </Link>
       </section>
     </div>
   );
