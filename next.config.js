@@ -4,8 +4,9 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
-  "media-src 'self' blob: https://stream.mux.com https://*.mux.com",
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.mux.com https://storage.googleapis.com https://*.vercel-storage.com",
+  "media-src 'self' blob: https:",
+  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.mux.com https://*.fastly.net https://*.akamaized.net https://*.cloudfront.net https://storage.googleapis.com https://*.vercel-storage.com",
+  "worker-src 'self' blob:",
   "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -24,6 +25,9 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  images: {
+    unoptimized: true,
+  },
   async headers() {
     return [
       {
