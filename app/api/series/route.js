@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listSeries, createSeries } from "@/lib/firestoreService";
-import { normalizeMuxMetadata, signMediaItemMuxUrls, syncEpisodeMuxMetadata } from "@/lib/muxService";
+import { isMuxConfigured, normalizeMuxMetadata, signMediaItemMuxUrls, syncEpisodeMuxMetadata } from "@/lib/muxService";
 import { validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
@@ -47,28 +47,44 @@ export async function POST(request) {
         playbackId: payload.mux_playback_id,
         videoId: payload.mux_video_id,
       });
+      if (isMuxConfigured && !muxInfo.assetId) {
+        return NextResponse.json(
+          { error: "Asset Mux tidak ditemukan atau belum valid. Periksa Playback/Asset ID." },
+          { status: 422 }
+        );
+      }
       payload.mux_asset_id = muxInfo.assetId;
       payload.mux_playback_id = muxInfo.playbackId;
       payload.mux_video_id = muxInfo.videoId;
     }
 
     if (Array.isArray(payload.episodes)) {
-      payload.episodes = await Promise.all(
-        payload.episodes.map(async (episode) => {
-          const episodeMux = await normalizeMuxMetadata({
-            assetId: episode?.mux_asset_id,
-            playbackId: episode?.mux_playback_id,
-            videoId: episode?.mux_video_id,
-          });
-          return {
-            ...episode,
-            duration: episode?.duration || episodeMux.duration || null,
-            mux_asset_id: episodeMux.assetId,
-            mux_playback_id: episodeMux.playbackId,
-            mux_video_id: episodeMux.videoId,
-          };
-        })
-      );
+      const normalizedEpisodes = [];
+      for (const episode of payload.episodes) {
+        const episodeMux = await normalizeMuxMetadata({
+          assetId: episode?.mux_asset_id,
+          playbackId: episode?.mux_playback_id,
+          videoId: episode?.mux_video_id,
+        });
+        if (
+          isMuxConfigured &&
+          (episode?.mux_asset_id || episode?.mux_playback_id || episode?.mux_video_id) &&
+          !episodeMux.assetId
+        ) {
+          return NextResponse.json(
+            { error: "Asset Mux episode tidak ditemukan atau belum valid. Periksa Playback/Asset ID." },
+            { status: 422 }
+          );
+        }
+        normalizedEpisodes.push({
+          ...episode,
+          duration: episode?.duration || episodeMux.duration || null,
+          mux_asset_id: episodeMux.assetId,
+          mux_playback_id: episodeMux.playbackId,
+          mux_video_id: episodeMux.videoId,
+        });
+      }
+      payload.episodes = normalizedEpisodes;
     }
 
     let created;

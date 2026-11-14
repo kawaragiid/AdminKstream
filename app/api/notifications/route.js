@@ -6,7 +6,11 @@ import {
 } from "@/lib/notificationsService";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
-import { ADMIN_ROLES } from "@/utils/constants";
+import { ADMIN_ROLES, ALERT_TYPES } from "@/utils/constants";
+
+const ALLOWED_NOTIFICATION_TYPES = new Set(Object.values(ALERT_TYPES));
+const MAX_TITLE_LENGTH = 200;
+const MAX_BODY_LENGTH = 2000;
 
 export async function GET() {
   const { session, error: authError } = await requireRole();
@@ -30,10 +34,21 @@ export async function POST(request) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
       return NextResponse.json({ error: "Payload tidak valid." }, { status: 400 });
     }
-    if (!payload?.title?.trim() || !payload?.body?.trim()) {
+    const title = typeof payload?.title === "string" ? payload.title.trim() : "";
+    const body = typeof payload?.body === "string" ? payload.body.trim() : "";
+    if (!title || !body) {
       return NextResponse.json({ error: "Judul dan isi notifikasi wajib diisi." }, { status: 400 });
     }
-    const notification = await createNotification(payload);
+    if (title.length > MAX_TITLE_LENGTH || body.length > MAX_BODY_LENGTH) {
+      return NextResponse.json(
+        { error: `Judul maksimal ${MAX_TITLE_LENGTH} karakter dan isi maksimal ${MAX_BODY_LENGTH} karakter.` },
+        { status: 400 }
+      );
+    }
+    if (payload.type !== undefined && !ALLOWED_NOTIFICATION_TYPES.has(payload.type)) {
+      return NextResponse.json({ error: "Tipe notifikasi tidak valid." }, { status: 400 });
+    }
+    const notification = await createNotification({ ...payload, title, body });
     await recordAuditLog({
       actor: session,
       action: "notification.create",

@@ -19,7 +19,7 @@ const ALLOWED_DATABASE_TABLES = new Set([
 function escapeCsvCell(value) {
   if (value === null || value === undefined) return '""';
   const raw = typeof value === "object" ? JSON.stringify(value) : String(value);
-  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  const safe = /^\s*[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${safe.replace(/"/g, '""')}"`;
 }
 

@@ -67,12 +67,20 @@ export async function PUT(request, { params }) {
       }
     }
 
-    await updateEpisode(id, episodeId, merged);
+    const updateResult = await updateEpisode(id, episodeId, merged);
+    const updatedSeries = await getSeries(id);
+    const persistedEpisode =
+      (updatedSeries?.episodes ?? []).find(
+        (ep) => ep.episodeId === episodeId || ep.id === episodeId
+      ) ||
+      (updateResult && typeof updateResult === "object" && (updateResult.episodeId || updateResult.id)
+        ? updateResult
+        : merged);
 
     if (
       existingEpisode.mux_asset_id &&
-      merged.mux_asset_id &&
-      existingEpisode.mux_asset_id !== merged.mux_asset_id &&
+      persistedEpisode.mux_asset_id &&
+      existingEpisode.mux_asset_id !== persistedEpisode.mux_asset_id &&
       isMuxConfigured
     ) {
       await deleteAsset(existingEpisode.mux_asset_id).catch((err) =>
@@ -83,7 +91,7 @@ export async function PUT(request, { params }) {
     await syncEpisodeMuxMetadata({
       seriesId: id,
       seriesTitle: series.title,
-      episode: merged,
+      episode: persistedEpisode,
       creatorId: session.uid,
     }).catch((err) => console.warn("Gagal sinkronisasi metadata Mux episode:", err?.message));
 
@@ -92,10 +100,10 @@ export async function PUT(request, { params }) {
       action: "series.episode.update",
       targetId: id,
       targetType: "series-episode",
-      metadata: { episodeId, title: merged.title },
+      metadata: { episodeId, title: persistedEpisode.title },
     }).catch((err) => console.warn("[PUT episode] audit log failed:", err?.message || err));
 
-    return NextResponse.json({ data: merged });
+    return NextResponse.json({ data: persistedEpisode });
   } catch (error) {
     console.error("PUT /api/series/[id]/episodes/[episodeId]", error);
     const status = error?.statusCode || 500;

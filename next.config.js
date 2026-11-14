@@ -1,6 +1,21 @@
+const isProd = process.env.NODE_ENV === "production";
+
+const scriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(isProd ? [] : ["'unsafe-eval'"]),
+  "https://apis.google.com",
+  "https://*.gstatic.com",
+  "https://www.gstatic.com",
+  "https://*.firebaseapp.com",
+  "https://*.web.app",
+  "https://www.google.com",
+  "https://www.recaptcha.net",
+].join(" ");
+
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.gstatic.com https://www.gstatic.com https://*.firebaseapp.com https://*.web.app https://www.google.com https://www.recaptcha.net",
+  `script-src ${scriptSrc}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
@@ -8,6 +23,7 @@ const cspDirectives = [
   "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com https://*.firebase.com https://*.web.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.google.com https://www.recaptcha.net https://*.mux.com https://*.fastly.net https://*.akamaized.net https://*.cloudfront.net https://storage.googleapis.com https://*.vercel-storage.com",
   "worker-src 'self' blob:",
   "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://*.web.app https://www.google.com https://www.recaptcha.net",
+  "object-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

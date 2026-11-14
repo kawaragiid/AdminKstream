@@ -18,6 +18,7 @@ async function isAssetReferenced(assetId) {
        OR EXISTS (
          SELECT 1 FROM jsonb_array_elements(episodes) AS ep
          WHERE ep->>'mux_asset_id' = ${assetId}
+            OR ep->>'muxAssetId' = ${assetId}
        )
     LIMIT 1
   `;

@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/session";
 
 const MAX_PROXY_BYTES = 100 * 1024 * 1024; // 100 MB batas aman untuk proxy fallback
 const ALLOWED_METHODS = new Set(["PUT", "POST"]);
+const ALLOWED_MUX_UPLOAD_HOSTS = new Set(["direct-uploads.mux.com", "uploads.mux.com"]);
 
 function hasSafeUploadPathname(pathname) {
   if (!pathname || pathname === "/" || pathname.length < 2) return false;
@@ -17,8 +18,8 @@ function isAllowedMuxUploadUrl(url) {
     if (u.username || u.password) return false;
 
     const host = u.hostname.toLowerCase();
-    if (host === "mux.com" || host.endsWith(".mux.com")) {
-      return true;
+    if (ALLOWED_MUX_UPLOAD_HOSTS.has(host)) {
+      return hasSafeUploadPathname(u.pathname);
     }
 
     if (host === "storage.googleapis.com") {
@@ -27,7 +28,8 @@ function isAllowedMuxUploadUrl(url) {
         Boolean(u.searchParams.get("Signature")) &&
         Boolean(u.searchParams.get("GoogleAccessId")) &&
         Boolean(u.searchParams.get("upload_id"));
-      return (hasGoogV4Sig || hasGoogV2Sig) && hasSafeUploadPathname(u.pathname);
+      const isMuxBucketPath = u.pathname.startsWith("/mux-") || u.pathname.includes("/mux-");
+      return (hasGoogV4Sig || hasGoogV2Sig) && hasSafeUploadPathname(u.pathname) && isMuxBucketPath;
     }
 
     if (/^[a-z0-9][a-z0-9.-]*\.s3(?:-accelerate)?\.amazonaws\.com$/i.test(host)) {

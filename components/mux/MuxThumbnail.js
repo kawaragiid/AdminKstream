@@ -51,18 +51,20 @@ export async function resolveMuxSignedUrl({ playbackId, type = "thumbnail", time
     if (end !== undefined) params.set("end", String(end));
 
     const res = await fetch(`/api/mux/sign?${params.toString()}`, { signal });
-    if (!res.ok) return fallbackUrl;
+    if (!res.ok) return "";
     const json = await res.json().catch(() => ({}));
-    const signed = json?.data?.url || json?.url || "";
+    const signed = json?.data?.thumbnailUrl || json?.data?.url || json?.url || "";
     if (signed) {
       signedUrlCache.set(cacheKey, signed);
       return signed;
     }
+    if (json?.data?.signed === false) {
+      return fallbackUrl;
+    }
+    return "";
   } catch {
-    // Fallback to unsigned URL if /api/mux/sign is unavailable or aborted
+    return "";
   }
-
-  return fallbackUrl;
 }
 
 /**
@@ -76,7 +78,12 @@ export default function MuxThumbnail({
   className = "h-full w-full object-cover",
   fallback = null,
 }) {
-  const [resolvedSrc, setResolvedSrc] = useState(src || "");
+  const trimmedInitial = (src ?? "").trim();
+  const initialNeedsSign =
+    (!trimmedInitial && Boolean(extractMuxPlaybackId(playbackId))) ||
+    (trimmedInitial.includes("image.mux.com/") && !trimmedInitial.includes("token="));
+
+  const [resolvedSrc, setResolvedSrc] = useState(initialNeedsSign ? "" : trimmedInitial);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -92,6 +99,7 @@ export default function MuxThumbnail({
       return;
     }
 
+    setResolvedSrc("");
     const controller = new AbortController();
     resolveMuxSignedUrl({
       playbackId: cleanPlayback,
@@ -100,7 +108,12 @@ export default function MuxThumbnail({
       signal: controller.signal,
     }).then((url) => {
       if (!controller.signal.aborted) {
-        setResolvedSrc(url || trimmedSrc);
+        if (url) {
+          setResolvedSrc(url);
+        } else {
+          setResolvedSrc("");
+          setHasError(true);
+        }
       }
     });
 

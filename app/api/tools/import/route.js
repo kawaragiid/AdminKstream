@@ -2,13 +2,16 @@ import { NextResponse } from "next/server";
 import { getAuth } from "firebase-admin/auth";
 import { createMovie, createSeries } from "@/lib/firestoreService";
 import { getFirebaseAdminApp, isFirebaseConfigured } from "@/lib/firebase";
+import { isMuxConfigured, normalizeMuxMetadata } from "@/lib/muxService";
 import { ensureNeonSchema, getSql, isNeonConfigured } from "@/lib/neonDb";
-import { ADMIN_ROLES, CUSTOMER_ROLE } from "@/utils/constants";
-import { validateMoviePayload, validateSeriesPayload } from "@/utils/validators";
+import { ADMIN_ROLES, CUSTOMER_ROLE, USER_PLANS } from "@/utils/constants";
+import { ensureHttps, validateMoviePayload, validateSeriesPayload } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 
 const MAX_IMPORT_DOCS = 500;
+const VALID_ROLES = new Set([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN, ADMIN_ROLES.EDITOR, CUSTOMER_ROLE]);
+const VALID_PLANS = new Set([USER_PLANS.FREE, USER_PLANS.PREMIUM]);
 const ALLOWED_DATABASE_TABLES = new Set([
   "movies",
   "series",
@@ -95,6 +98,52 @@ export async function POST(request) {
             throw new Error(typeof firstError === "string" ? firstError : "Validasi metadata konten gagal.");
           }
 
+          if (
+            normalizedRecord.mux_asset_id ||
+            normalizedRecord.mux_playback_id ||
+            normalizedRecord.mux_video_id
+          ) {
+            const muxInfo = await normalizeMuxMetadata({
+              assetId: normalizedRecord.mux_asset_id,
+              playbackId: normalizedRecord.mux_playback_id,
+              videoId: normalizedRecord.mux_video_id,
+            });
+            if (isMuxConfigured && !muxInfo.assetId) {
+              throw new Error("Asset Mux tidak ditemukan atau belum valid.");
+            }
+            normalizedRecord.mux_asset_id = muxInfo.assetId;
+            normalizedRecord.mux_playback_id = muxInfo.playbackId;
+            normalizedRecord.mux_video_id = muxInfo.videoId;
+            if (!normalizedRecord.duration && muxInfo.duration) {
+              normalizedRecord.duration = muxInfo.duration;
+            }
+          }
+
+          if (normalizedRecord.type === "series" && Array.isArray(normalizedRecord.episodes)) {
+            normalizedRecord.episodes = await Promise.all(
+              normalizedRecord.episodes.map(async (ep) => {
+                if (!ep || (!ep.mux_asset_id && !ep.mux_playback_id && !ep.mux_video_id)) {
+                  return ep;
+                }
+                const epMux = await normalizeMuxMetadata({
+                  assetId: ep.mux_asset_id,
+                  playbackId: ep.mux_playback_id,
+                  videoId: ep.mux_video_id,
+                });
+                if (isMuxConfigured && !epMux.assetId) {
+                  throw new Error("Asset Mux episode tidak ditemukan atau belum valid.");
+                }
+                return {
+                  ...ep,
+                  duration: ep.duration || epMux.duration || null,
+                  mux_asset_id: epMux.assetId,
+                  mux_playback_id: epMux.playbackId,
+                  mux_video_id: epMux.videoId,
+                };
+              })
+            );
+          }
+
           const created =
             normalizedRecord.type === "series"
               ? await createSeries(normalizedRecord, session)
@@ -161,6 +210,27 @@ export async function POST(request) {
       const usersToSync = [];
 
       for (const { table, row } of operations) {
+        if (table === "movies" || table === "series") {
+          const mediaUrls = [row.thumbnail, row.backdrop_url ?? row.backdropUrl, row.trailer];
+          for (const rawUrl of mediaUrls) {
+            if (typeof rawUrl === "string" && rawUrl.trim() && !ensureHttps(rawUrl)) {
+              return NextResponse.json(
+                { error: `URL media tidak valid pada data ${table}.` },
+                { status: 400 }
+              );
+            }
+          }
+          if (table === "series" && Array.isArray(row.episodes)) {
+            for (const ep of row.episodes) {
+              if (typeof ep?.thumbnail === "string" && ep.thumbnail.trim() && !ensureHttps(ep.thumbnail)) {
+                return NextResponse.json(
+                  { error: "URL thumbnail episode tidak valid pada data series." },
+                  { status: 400 }
+                );
+              }
+            }
+          }
+        }
         if (table === "movies") {
           const slug = movieSlugMap.get(row.id) || `${row.id}`;
           const createdAt = row.created_at ?? row.createdAt ?? new Date().toISOString();
@@ -346,7 +416,13 @@ export async function POST(request) {
           const email = String(row.email || "");
           const displayName = String(row.display_name ?? row.displayName ?? "");
           const role = String(row.role || CUSTOMER_ROLE);
-          const plan = String(row.plan || "free");
+          const plan = String(row.plan || USER_PLANS.FREE);
+          if (!VALID_ROLES.has(role) || !VALID_PLANS.has(plan)) {
+            return NextResponse.json(
+              { error: "Role atau plan tidak valid pada data users." },
+              { status: 400 }
+            );
+          }
           const isActive =
             row.is_active !== undefined
               ? Boolean(row.is_active)
@@ -516,6 +592,6 @@ export async function POST(request) {
     return NextResponse.json({ error: "Tipe import tidak dikenal." }, { status: 400 });
   } catch (error) {
     console.error("POST /api/tools/import", error);
-    return NextResponse.json({ error: error.message || "Gagal melakukan import." }, { status: 500 });
+    return NextResponse.json({ error: "Import gagal diproses." }, { status: 500 });
   }
 }

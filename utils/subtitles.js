@@ -21,9 +21,16 @@ export function convertSrtToVtt(srtText = "") {
         continue;
       }
     }
-    cleaned.push(
-      line.replace(TIME_REGEX, (_match, hours, rest, ms) => `${hours.padStart(2, "0")}:${rest}.${ms}`)
-    );
+    if (line.includes("-->")) {
+      cleaned.push(
+        line.replace(TIME_REGEX, (_match, hours, rest, ms) => `${hours.padStart(2, "0")}:${rest}.${ms}`)
+      );
+    } else {
+      const stripped = line
+        .replace(/\{\\[^}]+\}/g, "")
+        .replace(/<[^>]+>/g, "");
+      cleaned.push(stripped);
+    }
   }
 
   return `WEBVTT\n\n${cleaned.join("\n")}`;

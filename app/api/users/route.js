@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listUsers, updateUserRole, updateUserStatus, createAdminUser, updateUserSubscription } from "@/lib/usersService";
-import { requireRole } from "@/lib/session";
+import { requireRole, verifySameOrigin } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
 import { ADMIN_ROLES, CUSTOMER_ROLE, USER_PLANS } from "@/utils/constants";
 
@@ -26,6 +26,10 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden origin." }, { status: 403 });
+  }
+
   const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 
@@ -84,6 +88,10 @@ export async function POST(request) {
 }
 
 export async function PATCH(request) {
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden origin." }, { status: 403 });
+  }
+
   const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 

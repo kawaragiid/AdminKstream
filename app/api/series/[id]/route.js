@@ -53,6 +53,25 @@ export async function PUT(request, { params }) {
     const payload = stripImmutableFields(rawPayload);
     const merged = { ...existing, ...payload };
 
+    const existingEpisodes = Array.isArray(existing.episodes) ? existing.episodes : [];
+    if (Array.isArray(payload.episodes)) {
+      merged.episodes = payload.episodes.map((episode) => {
+        const matchedExisting = existingEpisodes.find(
+          (ep) =>
+            (episode?.episodeId && ep?.episodeId === episode.episodeId) ||
+            (episode?.epNumber !== undefined &&
+              ep?.epNumber === episode.epNumber &&
+              Number(ep?.seasonNumber ?? 1) === Number(episode?.seasonNumber ?? 1))
+        );
+        return {
+          ...(matchedExisting ?? {}),
+          ...episode,
+          episodeId: episode?.episodeId ?? matchedExisting?.episodeId,
+          createdAt: episode?.createdAt ?? matchedExisting?.createdAt,
+        };
+      });
+    }
+
     const validation = validateSeriesPayload(merged);
     if (!validation.valid) {
       return NextResponse.json({ error: "Validasi gagal.", details: validation.errors }, { status: 422 });
@@ -68,39 +87,48 @@ export async function PUT(request, { params }) {
         playbackId: merged.mux_playback_id,
         videoId: merged.mux_video_id,
       });
+      if (
+        isMuxConfigured &&
+        (merged.mux_asset_id || merged.mux_playback_id || merged.mux_video_id) &&
+        !muxInfo.assetId
+      ) {
+        return NextResponse.json(
+          { error: "Asset Mux tidak ditemukan atau belum valid. Periksa Playback/Asset ID." },
+          { status: 422 }
+        );
+      }
       merged.mux_asset_id = muxInfo.assetId;
       merged.mux_playback_id = muxInfo.playbackId;
       merged.mux_video_id = muxInfo.videoId;
     }
 
-    const existingEpisodes = Array.isArray(existing.episodes) ? existing.episodes : [];
     if (Array.isArray(payload.episodes)) {
-      merged.episodes = await Promise.all(
-        payload.episodes.map(async (episode) => {
-          const matchedExisting = existingEpisodes.find(
-            (ep) =>
-              (episode?.episodeId && ep?.episodeId === episode.episodeId) ||
-              (episode?.epNumber !== undefined &&
-                ep?.epNumber === episode.epNumber &&
-                Number(ep?.seasonNumber ?? 1) === Number(episode?.seasonNumber ?? 1))
+      const normalizedEpisodes = [];
+      for (const episode of merged.episodes) {
+        const episodeMux = await normalizeMuxMetadata({
+          assetId: episode?.mux_asset_id,
+          playbackId: episode?.mux_playback_id,
+          videoId: episode?.mux_video_id,
+        });
+        if (
+          isMuxConfigured &&
+          (episode?.mux_asset_id || episode?.mux_playback_id || episode?.mux_video_id) &&
+          !episodeMux.assetId
+        ) {
+          return NextResponse.json(
+            { error: "Asset Mux episode tidak ditemukan atau belum valid. Periksa Playback/Asset ID." },
+            { status: 422 }
           );
-          const episodeMux = await normalizeMuxMetadata({
-            assetId: episode?.mux_asset_id ?? matchedExisting?.mux_asset_id,
-            playbackId: episode?.mux_playback_id ?? matchedExisting?.mux_playback_id,
-            videoId: episode?.mux_video_id ?? matchedExisting?.mux_video_id,
-          });
-          return {
-            ...(matchedExisting ?? {}),
-            ...episode,
-            episodeId: episode?.episodeId ?? matchedExisting?.episodeId,
-            createdAt: episode?.createdAt ?? matchedExisting?.createdAt,
-            duration: episode?.duration || matchedExisting?.duration || episodeMux.duration || null,
-            mux_asset_id: episodeMux.assetId,
-            mux_playback_id: episodeMux.playbackId,
-            mux_video_id: episodeMux.videoId,
-          };
-        })
-      );
+        }
+        normalizedEpisodes.push({
+          ...episode,
+          duration: episode?.duration || episodeMux.duration || null,
+          mux_asset_id: episodeMux.assetId,
+          mux_playback_id: episodeMux.playbackId,
+          mux_video_id: episodeMux.videoId,
+        });
+      }
+      merged.episodes = normalizedEpisodes;
     }
 
     const { id: _omit, ...data } = merged;

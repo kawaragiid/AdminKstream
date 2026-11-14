@@ -1,23 +1,54 @@
 ﻿import { CONTENT_TYPES } from "./constants";
 
+function isBlockedHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host) return true;
+  if (host === "localhost" || host === "0.0.0.0" || host === "::1" || host.endsWith(".local")) {
+    return true;
+  }
+  if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+  return false;
+}
+
 export function ensureHttps(url) {
-  if (url === null || url === undefined) return null;
-  const trimmed = String(url).trim();
+  if (url === null || url === undefined || typeof url !== "string") return null;
+  const trimmed = url.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
-  if (/^https:\/\//i.test(trimmed)) return trimmed;
-  if (/^http:\/\//i.test(trimmed)) return trimmed.replace(/^http:\/\//i, "https://");
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("//")) {
+  if (trimmed.startsWith("//")) return null;
+
+  let candidate = trimmed;
+  if (/^http:\/\//i.test(candidate)) {
+    candidate = candidate.replace(/^http:\/\//i, "https://");
+  } else if (!/^https:\/\//i.test(candidate)) {
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(candidate)) {
+      return null;
+    }
+    candidate = `https://${candidate}`;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:") return null;
+    if (isBlockedHost(parsed.hostname)) return null;
+    return parsed.toString();
+  } catch {
     return null;
   }
-  return `https://${trimmed}`;
 }
 
 export function sanitizeTagsList(rawTags = []) {
+  if (!Array.isArray(rawTags)) return [];
   return rawTags
+    .filter((tag) => typeof tag === "string")
     .map((tag) => tag.trim().toLowerCase())
     .filter(Boolean)
-    .filter((tag, index, arr) => arr.indexOf(tag) === index);
+    .filter((tag, index, arr) => arr.indexOf(tag) === index)
+    .slice(0, 30);
 }
 
 export function validateSubtitleEntries(subtitles = []) {
@@ -35,11 +66,11 @@ export function validateSubtitleEntries(subtitles = []) {
       return;
     }
 
-    if (!item.lang || typeof item.lang !== "string") {
+    if (typeof item.lang !== "string" || !item.lang.trim()) {
       entryErrors.lang = "Kode bahasa wajib diisi.";
     }
 
-    if (!item.label || item.label.trim().length < 2) {
+    if (typeof item.label !== "string" || item.label.trim().length < 2) {
       entryErrors.label = "Label subtitle minimal 2 karakter.";
     }
 
@@ -78,6 +109,38 @@ function validateCommonMediaFields(payload, errors) {
     }
   }
 
+  if (payload.slug !== undefined && payload.slug !== null && payload.slug !== "") {
+    if (typeof payload.slug !== "string" || payload.slug.trim().length > 150) {
+      errors.slug = "Slug harus berupa string maksimal 150 karakter.";
+    }
+  }
+
+  if (payload.tags !== undefined && payload.tags !== null) {
+    if (!Array.isArray(payload.tags) || payload.tags.length > 30 || payload.tags.some((t) => typeof t !== "string" || t.trim().length > 50)) {
+      errors.tags = "Tags maksimal 30 item (masing-masing maksimal 50 karakter).";
+    }
+  }
+
+  if (payload.genres !== undefined && payload.genres !== null) {
+    if (Array.isArray(payload.genres)) {
+      if (payload.genres.length > 20 || payload.genres.some((g) => typeof g !== "string" || g.trim().length > 50)) {
+        errors.genres = "Genres maksimal 20 item (masing-masing maksimal 50 karakter).";
+      }
+    } else if (typeof payload.genres !== "string" || payload.genres.length > 500) {
+      errors.genres = "Genres tidak valid.";
+    }
+  }
+
+  if (payload.cast !== undefined && payload.cast !== null) {
+    if (Array.isArray(payload.cast)) {
+      if (payload.cast.length > 50 || payload.cast.some((c) => typeof c !== "string" || c.trim().length > 100)) {
+        errors.cast = "Cast maksimal 50 item (masing-masing maksimal 100 karakter).";
+      }
+    } else if (typeof payload.cast !== "string" || payload.cast.length > 2000) {
+      errors.cast = "Cast tidak valid.";
+    }
+  }
+
   if (typeof payload.thumbnail === "string" && payload.thumbnail.trim() && !ensureHttps(payload.thumbnail)) {
     errors.thumbnail = "URL thumbnail tidak valid.";
   }
@@ -94,11 +157,11 @@ function validateCommonMediaFields(payload, errors) {
 export function validateMoviePayload(payload) {
   const errors = {};
 
-  if (!payload.title || payload.title.trim().length < 2) {
+  if (typeof payload.title !== "string" || payload.title.trim().length < 2) {
     errors.title = "Judul minimal 2 karakter.";
   }
 
-  if (!payload.description || payload.description.trim().length < 10) {
+  if (typeof payload.description !== "string" || payload.description.trim().length < 10) {
     errors.description = "Deskripsi minimal 10 karakter.";
   }
 
@@ -107,7 +170,7 @@ export function validateMoviePayload(payload) {
   }
 
   const playback = payload.mux_playback_id ?? payload.mux_video_id;
-  if (!playback || typeof playback !== "string") {
+  if (!playback || typeof playback !== "string" || !playback.trim()) {
     errors.mux_playback_id = "Playback ID utama wajib diisi.";
   }
 
@@ -129,24 +192,27 @@ export function validateMoviePayload(payload) {
 export function validateEpisodePayload(episode, index = 0) {
   const errors = {};
 
-  if (episode.seasonNumber !== undefined && (typeof episode.seasonNumber !== "number" || episode.seasonNumber < 1)) {
-    errors.seasonNumber = "Nomor season harus berupa angka minimal 1.";
+  if (
+    episode.seasonNumber !== undefined &&
+    (!Number.isInteger(episode.seasonNumber) || !Number.isFinite(episode.seasonNumber) || episode.seasonNumber < 1)
+  ) {
+    errors.seasonNumber = "Nomor season harus berupa angka bulat minimal 1.";
   }
 
-  if (typeof episode.epNumber !== "number" || episode.epNumber < 1) {
-    errors.epNumber = "Nomor episode harus berupa angka lebih besar dari 0.";
+  if (!Number.isInteger(episode.epNumber) || !Number.isFinite(episode.epNumber) || episode.epNumber < 1) {
+    errors.epNumber = "Nomor episode harus berupa angka bulat lebih besar dari 0.";
   }
 
-  if (!episode.title || episode.title.trim().length < 2) {
+  if (typeof episode.title !== "string" || episode.title.trim().length < 2) {
     errors.title = "Judul episode minimal 2 karakter.";
   }
 
-  if (!episode.description || episode.description.trim().length < 10) {
+  if (typeof episode.description !== "string" || episode.description.trim().length < 10) {
     errors.description = "Deskripsi episode minimal 10 karakter.";
   }
 
   const playback = episode.mux_playback_id ?? episode.mux_video_id;
-  if (!playback || typeof playback !== "string") {
+  if (!playback || typeof playback !== "string" || !playback.trim()) {
     errors.mux_playback_id = "Playback ID episode wajib diisi.";
   }
 
@@ -174,11 +240,11 @@ export function validateEpisodePayload(episode, index = 0) {
 export function validateSeriesPayload(payload) {
   const errors = {};
 
-  if (!payload.title || payload.title.trim().length < 2) {
+  if (typeof payload.title !== "string" || payload.title.trim().length < 2) {
     errors.title = "Judul minimal 2 karakter.";
   }
 
-  if (!payload.description || payload.description.trim().length < 10) {
+  if (typeof payload.description !== "string" || payload.description.trim().length < 10) {
     errors.description = "Deskripsi minimal 10 karakter.";
   }
 

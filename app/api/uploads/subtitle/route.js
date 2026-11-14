@@ -32,10 +32,14 @@ function decodeSubtitleBuffer(buffer) {
   }
 }
 
+const VTT_CUE_TIMING_REGEX =
+  /^\s*(?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}/m;
+const LANG_CODE_REGEX = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
+
 function isValidWebVttContent(text) {
   const trimmed = text.trimStart();
   if (!/^WEBVTT(?:\s|$)/i.test(trimmed)) return false;
-  return trimmed.includes("-->");
+  return VTT_CUE_TIMING_REGEX.test(trimmed);
 }
 
 export async function POST(request) {
@@ -45,7 +49,12 @@ export async function POST(request) {
   try {
     const form = await request.formData();
     const file = form.get("file");
-    const lang = String(form.get("lang") || "en").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 16) || "en";
+    const normalizedLang = String(form.get("lang") || "en")
+      .trim()
+      .replace(/_/g, "-")
+      .replace(/[^a-zA-Z0-9-]/g, "")
+      .slice(0, 16);
+    const lang = LANG_CODE_REGEX.test(normalizedLang) ? normalizedLang : "en";
     const label = String(form.get("label") || lang).trim().slice(0, 60) || lang;
 
     if (!file || typeof file.arrayBuffer !== "function") {
@@ -78,7 +87,7 @@ export async function POST(request) {
     }
 
     const vtt = isVtt ? rawText : convertSrtToVtt(rawText);
-    if (!vtt.includes("-->")) {
+    if (!VTT_CUE_TIMING_REGEX.test(vtt)) {
       return NextResponse.json({ error: "Subtitle tidak memiliki cue timestamp yang valid." }, { status: 400 });
     }
     if (Buffer.byteLength(vtt, "utf-8") > MAX_SUBTITLE_BYTES) {

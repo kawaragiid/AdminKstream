@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuth } from "firebase-admin/auth";
-import { requireRole } from "@/lib/session";
+import { requireRole, verifySameOrigin } from "@/lib/session";
 import { getFirebaseAdminApp } from "@/lib/firebase";
 import { ensureNeonSchema, getSql, isNeonConfigured } from "@/lib/neonDb";
 
@@ -43,6 +43,10 @@ export async function GET() {
 }
 
 export async function PUT(request) {
+  if (!verifySameOrigin(request)) {
+    return NextResponse.json({ error: "Forbidden origin." }, { status: 403 });
+  }
+
   const { session, error: authError } = await requireRole();
   if (authError) return authError;
   try {
@@ -87,24 +91,6 @@ export async function PUT(request) {
       ...(hasTagline ? { tagline } : {}),
     };
 
-    await sql`
-      INSERT INTO users (uid, email, display_name, role, plan, is_active, data, updated_at)
-      VALUES (
-        ${session.uid},
-        ${existingRow.email || session.email || ""},
-        ${displayName},
-        ${existingRow.role || session.role || "admin"},
-        ${existingRow.plan || session.plan || "free"},
-        ${existingRow.is_active ?? true},
-        ${JSON.stringify(nextData)}::jsonb,
-        NOW()
-      )
-      ON CONFLICT (uid) DO UPDATE SET
-        display_name = EXCLUDED.display_name,
-        data = EXCLUDED.data,
-        updated_at = NOW()
-    `;
-
     const app = getFirebaseAdminApp();
     if (app) {
       try {
@@ -113,9 +99,32 @@ export async function PUT(request) {
           photoURL: photoURL ?? null,
         });
       } catch (fbError) {
-        console.warn("[PUT /api/users/me] Firebase updateUser failed:", fbError?.message || fbError);
+        console.error("[PUT /api/users/me] Firebase updateUser failed:", fbError?.message || fbError);
+        return NextResponse.json(
+          { error: "Gagal memperbarui profil pada layanan autentikasi." },
+          { status: 502 }
+        );
       }
     }
+
+    await sql`
+      INSERT INTO users (uid, email, display_name, role, plan, is_active, data, updated_at)
+      VALUES (
+        ${session.uid},
+        ${session.email || existingRow.email || ""},
+        ${displayName},
+        ${existingRow.role || session.role || "admin"},
+        ${existingRow.plan || session.plan || "free"},
+        ${existingRow.is_active ?? true},
+        ${JSON.stringify(nextData)}::jsonb,
+        NOW()
+      )
+      ON CONFLICT (uid) DO UPDATE SET
+        email = EXCLUDED.email,
+        display_name = EXCLUDED.display_name,
+        data = EXCLUDED.data,
+        updated_at = NOW()
+    `;
 
     return NextResponse.json({
       data: {

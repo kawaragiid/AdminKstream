@@ -3,6 +3,8 @@ import { convertSrtToVtt } from "@/utils/subtitles";
 import { requireRole } from "@/lib/session";
 
 const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024;
+const VTT_CUE_TIMING_REGEX =
+  /^\s*(?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}\s+-->\s+(?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}/m;
 
 export async function POST(request) {
   const { error: authError } = await requireRole();
@@ -46,6 +48,12 @@ export async function POST(request) {
     const normalizedContent = content.replace(/^\uFEFF/, "");
     const isAlreadyVtt = /^WEBVTT(?:\s|$)/i.test(normalizedContent.trimStart());
     if (isAlreadyVtt) {
+      if (!VTT_CUE_TIMING_REGEX.test(normalizedContent)) {
+        return NextResponse.json(
+          { error: "File WebVTT tidak memiliki cue timestamp yang valid." },
+          { status: 400 }
+        );
+      }
       return NextResponse.json({ data: normalizedContent, converted: false });
     }
 
