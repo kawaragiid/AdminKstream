@@ -4,6 +4,7 @@ import { deleteAsset, isMuxConfigured, normalizeMuxMetadata, syncEpisodeMuxMetad
 import { validateEpisode } from "@/utils/validators";
 import { requireRole } from "@/lib/session";
 import { recordAuditLog } from "@/lib/auditService";
+import { ADMIN_ROLES } from "@/utils/constants";
 
 export async function PUT(request, { params }) {
   const { session, error: authError } = await requireRole();
@@ -68,7 +69,7 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(_request, { params }) {
-  const { session, error: authError } = await requireRole();
+  const { session, error: authError } = await requireRole([ADMIN_ROLES.SUPER_ADMIN, ADMIN_ROLES.ADMIN]);
   if (authError) return authError;
 
   try {

@@ -283,20 +283,6 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
     }
   };
 
-  const handleThumbnailUpload = async (file) => {
-    if (!file) return;
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/uploads/image", { method: "POST", body: fd });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json?.data?.url) throw new Error(json?.error ?? "Gagal mengunggah thumbnail.");
-      setThumbnail(json.data.url);
-    } catch (err) {
-      setMessage({ type: "error", text: err?.message ?? "Gagal mengunggah thumbnail." });
-    }
-  };
-
   const handleSubtitleFile = async (index, file) => {
     if (!file) return;
     try {
@@ -633,25 +619,32 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
           />
         </label>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 items-start">
           <label className="block text-xs font-medium text-slate-300">
-            Thumbnail Episode (Opsional)
+            URL Thumbnail Episode (Opsional)
             <input
               value={thumbnail}
               onChange={(e) => setThumbnail(e.target.value)}
-              placeholder="https://... atau upload gambar"
+              placeholder="https://... (kosongkan untuk thumbnail otomatis Mux)"
               className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2.5 text-sm text-slate-100"
             />
           </label>
-          <label className="block text-xs font-medium text-slate-300">
-            Upload Gambar Thumbnail
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleThumbnailUpload(e.target.files?.[0])}
-              className="mt-2 block w-full text-xs text-slate-400"
-            />
-          </label>
+          {(thumbnail.trim() || normalizePlaybackValue(muxPlaybackId)) && (
+            <div className="space-y-1.5">
+              <span className="block text-xs font-medium text-slate-300">Preview Thumbnail</span>
+              <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={
+                    thumbnail.trim() ||
+                    `https://image.mux.com/${normalizePlaybackValue(muxPlaybackId)}/thumbnail.jpg?width=640`
+                  }
+                  alt="Preview thumbnail episode"
+                  className="h-28 w-full object-cover"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Subtitles */}

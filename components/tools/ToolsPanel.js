@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
+
+const DATABASE_TABLES = ["movies", "series", "platform_settings"];
 
 const sampleRecord = JSON.stringify(
   {
@@ -20,16 +21,7 @@ const ToolsPanel = () => {
   const fileInputRef = useRef(null);
   const [message, setMessage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [fsCols, setFsCols] = useState(() => {
-    const values = Object.values(FIRESTORE_COLLECTIONS ?? {});
-    // preselect common ones
-    return new Set(values.filter((v) => [
-      FIRESTORE_COLLECTIONS?.MOVIES,
-      FIRESTORE_COLLECTIONS?.SERIES,
-      FIRESTORE_COLLECTIONS?.ADMIN_USERS,
-      FIRESTORE_COLLECTIONS?.SETTINGS,
-    ].includes(v)));
-  });
+  const [dbTables, setDbTables] = useState(() => new Set(DATABASE_TABLES));
 
   const triggerDownload = async (type, format = "csv") => {
     setMessage(null);
@@ -100,32 +92,32 @@ const ToolsPanel = () => {
     }
   };
 
-  const exportFirestore = async () => {
+  const exportDatabase = async () => {
     setMessage(null);
     try {
-      const cols = Array.from(fsCols);
-      const qs = cols.length ? `&collections=${encodeURIComponent(cols.join(","))}` : "";
-      const response = await fetch(`/api/tools/export?type=firestore${qs}`);
+      const tables = Array.from(dbTables);
+      const qs = tables.length ? `&tables=${encodeURIComponent(tables.join(","))}` : "";
+      const response = await fetch(`/api/tools/export?type=database${qs}`);
       if (!response.ok) {
         const result = await response.json();
-        throw new Error(result.error ?? "Gagal export Firestore");
+        throw new Error(result.error ?? "Gagal export database");
       }
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `firestore-export.json`;
+      link.download = `database-export.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      setMessage({ type: "success", text: `Export Firestore (${cols.length || "default"} koleksi).` });
+      setMessage({ type: "success", text: `Export Database Neon (${tables.length || "semua"} tabel).` });
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     }
   };
 
-  const importFirestore = async (event) => {
+  const importDatabase = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setLoading(true);
@@ -136,13 +128,13 @@ const ToolsPanel = () => {
       const response = await fetch("/api/tools/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "firestore", collections: json.collections ?? json, merge: true }),
+        body: JSON.stringify({ type: "database", tables: json.tables ?? json.collections ?? json, merge: true }),
       });
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.error ?? "Gagal import Firestore");
+        throw new Error(result.error ?? "Gagal import database");
       }
-      setMessage({ type: "success", text: `Import selesai. ${result.data?.length ?? 0} dokumen.` });
+      setMessage({ type: "success", text: `Import selesai. ${result.data?.length ?? 0} baris diproses.` });
     } catch (error) {
       console.error(error);
       setMessage({ type: "error", text: error.message });
@@ -183,41 +175,41 @@ const ToolsPanel = () => {
       </div>
 
       <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
-        <h3 className="text-lg font-semibold text-slate-100">Firestore Export / Import</h3>
-        <p className="text-sm text-slate-400">Unduh atau unggah snapshot koleksi Firestore (JSON).</p>
+        <h3 className="text-lg font-semibold text-slate-100">Database (Neon) Export / Import</h3>
+        <p className="text-sm text-slate-400">Unduh atau unggah snapshot tabel Database Neon Postgres (JSON).</p>
         <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
-          {Object.values(FIRESTORE_COLLECTIONS).map((col) => (
-            <label key={col} className="flex items-center gap-2 text-xs text-slate-300">
+          {DATABASE_TABLES.map((table) => (
+            <label key={table} className="flex items-center gap-2 text-xs text-slate-300">
               <input
                 type="checkbox"
-                checked={fsCols.has(col)}
+                checked={dbTables.has(table)}
                 onChange={(e) => {
-                  setFsCols((prev) => {
+                  setDbTables((prev) => {
                     const next = new Set(prev);
-                    if (e.target.checked) next.add(col);
-                    else next.delete(col);
+                    if (e.target.checked) next.add(table);
+                    else next.delete(table);
                     return next;
                   });
                 }}
                 className="h-4 w-4 rounded border-slate-700 bg-slate-900"
               />
-              {col}
+              {table}
             </label>
           ))}
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={exportFirestore}
+            onClick={exportDatabase}
             className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
           >
-            Export Firestore (JSON)
+            Export Database (JSON)
           </button>
           <div className="text-xs text-slate-400">atau import:</div>
           <input
             type="file"
             accept="application/json"
-            onChange={importFirestore}
+            onChange={importDatabase}
             disabled={loading}
             className="w-full cursor-pointer rounded-2xl border border-dashed border-slate-700 bg-slate-950 px-4 py-3 text-xs text-slate-400"
           />
@@ -251,7 +243,7 @@ const ToolsPanel = () => {
         </p>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-500">
           <li>Gunakan export konten mingguan dan simpan ke Cloud Storage.</li>
-          <li>Aktifkan backup Firestore native dari Google Cloud console.</li>
+          <li>Gunakan fitur Export Database (JSON) atau backup otomatis Neon Postgres.</li>
         </ul>
       </div>
 

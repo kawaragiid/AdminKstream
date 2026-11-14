@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { listAllMedia } from "@/lib/firestoreService";
-import { getFirestoreClient, isFirebaseConfigured } from "@/lib/firebase";
-import { FIRESTORE_COLLECTIONS } from "@/utils/constants";
+import { ensureNeonSchema, getSql, isNeonConfigured } from "@/lib/neonDb";
 import { fetchAnalyticsSummary } from "@/lib/analyticsService";
 import { listUsers } from "@/lib/usersService";
 import { requireRole } from "@/lib/session";
 import { ADMIN_ROLES } from "@/utils/constants";
+
+const ALLOWED_DATABASE_TABLES = new Set(["movies", "series", "platform_settings"]);
 
 function escapeCsvCell(value) {
   if (value === null || value === undefined) return '""';
@@ -81,40 +82,40 @@ export async function GET(request) {
       });
     }
 
-    if (type === "firestore") {
+    if (type === "database" || type === "firestore") {
       if (session.role !== ADMIN_ROLES.SUPER_ADMIN) {
-        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor Firestore." }, { status: 403 });
+        return NextResponse.json({ error: "Hanya super-admin yang dapat mengekspor database." }, { status: 403 });
       }
-      if (!isFirebaseConfigured) {
-        return NextResponse.json({ error: "Firebase Admin belum dikonfigurasi untuk export Firestore." }, { status: 400 });
+      if (!isNeonConfigured()) {
+        return NextResponse.json({ error: "Database Neon belum dikonfigurasi untuk export." }, { status: 400 });
       }
 
-      const allowed = new Set(Object.values(FIRESTORE_COLLECTIONS));
-      const raw = searchParams.get("collections") ?? "";
-      const reqCols = raw
+      const raw = searchParams.get("tables") ?? searchParams.get("collections") ?? "";
+      const reqTables = raw
         .split(",")
         .map((s) => s.trim())
-        .filter((s) => s && allowed.has(s));
+        .filter((s) => s && ALLOWED_DATABASE_TABLES.has(s));
 
-      const collections = reqCols.length ? reqCols : [
-        FIRESTORE_COLLECTIONS.MOVIES,
-        FIRESTORE_COLLECTIONS.SERIES,
-        FIRESTORE_COLLECTIONS.ADMIN_USERS,
-        FIRESTORE_COLLECTIONS.SETTINGS,
-      ];
+      const tables = reqTables.length ? reqTables : ["movies", "series", "platform_settings"];
 
-      const firestore = getFirestoreClient();
+      await ensureNeonSchema();
+      const sql = getSql();
       const result = {};
-      for (const col of collections) {
-        const snap = await firestore.collection(col).get();
-        result[col] = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      if (tables.includes("movies")) {
+        result.movies = await sql`SELECT * FROM movies ORDER BY created_at DESC`;
+      }
+      if (tables.includes("series")) {
+        result.series = await sql`SELECT * FROM series ORDER BY created_at DESC`;
+      }
+      if (tables.includes("platform_settings")) {
+        result.platform_settings = await sql`SELECT * FROM platform_settings ORDER BY id ASC`;
       }
 
-      const body = JSON.stringify({ exportedAt: new Date().toISOString(), collections: result }, null, 2);
+      const body = JSON.stringify({ exportedAt: new Date().toISOString(), tables: result }, null, 2);
       return new NextResponse(body, {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          "Content-Disposition": "attachment; filename=firestore-export.json",
+          "Content-Disposition": "attachment; filename=database-export.json",
         },
       });
     }
