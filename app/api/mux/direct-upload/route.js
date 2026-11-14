@@ -22,6 +22,7 @@ export async function POST(request) {
     const epTag = seasonPart || epPart ? `${seasonPart}${epPart}` : "";
     const metaTitle = [rawTitle, epTag].filter(Boolean).join(" - ") || undefined;
 
+    const playbackPolicy = [process.env.MUX_PLAYBACK_POLICY === "public" ? "public" : "signed"];
     const upload = await createDirectUpload({
       passthrough: JSON.stringify({
         type: contentType,
@@ -33,7 +34,7 @@ export async function POST(request) {
         creator_id: session.uid,
         external_id: typeof body?.externalId === "string" ? body.externalId : undefined,
       },
-      playbackPolicy: ["public"],
+      playbackPolicy,
       videoQuality: "basic",
       maxResolutionTier: "1080p",
       ttl: 3600,
