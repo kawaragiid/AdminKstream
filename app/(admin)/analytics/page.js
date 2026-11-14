@@ -4,6 +4,8 @@ import AnalyticsTable from "@/components/analytics/AnalyticsTable";
 import ActiveUsersCard from "@/components/analytics/ActiveUsersCard";
 import AudienceSplitPie from "@/components/analytics/AudienceSplitPie";
 import AverageWatchCard from "@/components/analytics/AverageWatchCard";
+import MuxCostMonitor from "@/components/analytics/MuxCostMonitor";
+import { getMuxCostReport } from "@/lib/muxService";
 import {
   fetchAnalyticsSummary,
   fetchTrendingSeries,
@@ -28,12 +30,13 @@ export default async function AnalyticsPage() {
     redirect("/");
   }
 
-  const [summary, trending, activeUsers, audienceSplit, averageWatch] = await Promise.all([
+  const [summary, trending, activeUsers, audienceSplit, averageWatch, muxReport] = await Promise.all([
     fetchAnalyticsSummary(),
     fetchTrendingSeries({ limit: 10 }),
     fetchActiveUsers(),
     fetchAudienceSplit(),
     fetchAverageWatchDuration(),
+    getMuxCostReport().catch(() => null),
   ]);
 
   const ctrAverage = summary.topContent.length
@@ -149,6 +152,8 @@ export default async function AnalyticsPage() {
           </div>
         </div>
       </section>
+
+      {muxReport && <MuxCostMonitor initialReport={muxReport} />}
     </div>
   );
 }

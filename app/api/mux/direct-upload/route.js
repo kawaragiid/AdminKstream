@@ -34,6 +34,8 @@ export async function POST(request) {
         external_id: typeof body?.externalId === "string" ? body.externalId : undefined,
       },
       playbackPolicy: ["public"],
+      videoQuality: "basic",
+      maxResolutionTier: "1080p",
       ttl: 3600,
       corsOrigin: origin,
     });
@@ -43,7 +45,11 @@ export async function POST(request) {
       action: "mux.direct-upload.create",
       targetId: upload.id,
       targetType: "mux-upload",
-      metadata: { type: body?.type ?? "main" },
+      metadata: {
+        type: body?.type ?? "main",
+        videoQuality: "basic",
+        maxResolutionTier: "1080p",
+      },
     });
 
     return NextResponse.json({ data: upload });

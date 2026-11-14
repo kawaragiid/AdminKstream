@@ -89,18 +89,23 @@ const Sidebar = ({ session }) => {
 
       <div className="hidden md:block px-3 pb-4">
         {expanded && (
-          <div className="mb-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <p className="text-sm font-medium text-slate-200">Status Sistem</p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-slate-400">
+          <div className="mb-3 rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">Status Sistem</p>
+            <div className="mt-2.5 flex items-center gap-2 text-xs text-slate-300">
               <Indicator />
-              <span>{session?.displayName ?? "Admin"} online</span>
+              <span className="truncate">{session?.displayName ?? "Admin"} online</span>
             </div>
-            <p className="mt-3 text-xs text-slate-500">Firebase, Firestore dan Mux terhubung.</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              Neon Postgres, Auth &amp; Mux Basic terhubung.
+            </p>
           </div>
         )}
-        <button onClick={toggleSidebar} className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 transition-colors hover:bg-slate-800/60 ${!expanded && 'justify-center'}`}>
-          {expanded ? "<" : ">"}
-          {expanded && <span className="font-medium">Ciutkan</span>}
+        <button
+          onClick={toggleSidebar}
+          className={`group flex w-full items-center gap-3 rounded-xl border border-slate-800/70 bg-slate-900/50 px-4 py-2.5 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-800/70 ${!expanded && "justify-center"}`}
+        >
+          <span>{expanded ? "◀" : "▶"}</span>
+          {expanded && <span>Ciutkan Sidebar</span>}
         </button>
       </div>
     </aside>
