@@ -10,7 +10,7 @@ export default function ToolsPage() {
       <header className="space-y-2">
         <h2 className="text-2xl font-semibold text-slate-100">Tools & Utilities</h2>
         <p className="text-sm text-slate-400">
-          Export data, import metadata massal, dan rekomendasi backup Firestore.
+          Export data (CSV/JSON), import metadata massal, dan utilitas backup database.
         </p>
       </header>
       <ToolsPanel />

@@ -158,8 +158,59 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   const [subtitleSyncStatus, setSubtitleSyncStatus] = useState("idle");
   const [isSyncingSubtitles, setIsSyncingSubtitles] = useState(false);
   const lastFetchedPlaybackRef = useRef(null);
+  const [activeSeason, setActiveSeason] = useState(1);
 
-  const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
+  const [dynamicCategories, setDynamicCategories] = useState(CONTENT_CATEGORIES);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((json) => {
+        const cats = json?.data?.categories;
+        if (Array.isArray(cats) && cats.length) {
+          setDynamicCategories(Array.from(new Set([...cats, ...CONTENT_CATEGORIES])));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const categoryOptions = useMemo(() => dynamicCategories, [dynamicCategories]);
+
+  const seasonData = useMemo(() => {
+    const episodes = formData.episodes ?? [];
+    const bySeason = {};
+    const seasonSet = new Set();
+    const declared = Math.max(1, Number(formData.totalSeasons ?? 1));
+    for (let s = 1; s <= declared; s += 1) {
+      seasonSet.add(s);
+      bySeason[s] = [];
+    }
+    episodes.forEach((ep, originalIndex) => {
+      const s = Math.max(1, Number(ep?.seasonNumber ?? 1));
+      seasonSet.add(s);
+      if (!bySeason[s]) bySeason[s] = [];
+      bySeason[s].push({ episode: ep, originalIndex });
+    });
+    const seasons = Array.from(seasonSet).sort((a, b) => a - b);
+    for (const s of seasons) {
+      bySeason[s].sort((a, b) => Number(a.episode?.epNumber ?? 0) - Number(b.episode?.epNumber ?? 0));
+    }
+    const maxSeason = seasons[seasons.length - 1] ?? 1;
+    return { seasons, maxSeason, bySeason };
+  }, [formData.episodes, formData.totalSeasons]);
+
+  const isDuplicateDraftEpisode = useMemo(() => {
+    if (editingEpisodeIndex === null) return false;
+    const targetSeason = Number(episodeDraft.seasonNumber ?? 1);
+    const targetEp = Number(episodeDraft.epNumber ?? 0);
+    if (!targetEp) return false;
+    return (formData.episodes ?? []).some(
+      (ep, idx) =>
+        idx !== editingEpisodeIndex &&
+        Number(ep?.seasonNumber ?? 1) === targetSeason &&
+        Number(ep?.epNumber ?? 0) === targetEp
+    );
+  }, [editingEpisodeIndex, episodeDraft.seasonNumber, episodeDraft.epNumber, formData.episodes]);
 
   useEffect(() => {
     setFormData({ ...defaultSeries, ...initialData });
@@ -751,10 +802,17 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     subtitlesUploadReady &&
     subtitlesSyncReady;
 
-  const openEpisodeEditor = (index = null) => {
+  const openEpisodeEditor = (index = null, targetSeason = null) => {
     lastFetchedPlaybackRef.current = null;
     if (index === null) {
-      setEpisodeDraft(newEpisodeDraft(formData.episodes?.length ?? 0));
+      const sNum = Math.max(1, Number(targetSeason ?? activeSeason ?? 1));
+      const epsInSeason = seasonData.bySeason[sNum] ?? [];
+      const maxEp = epsInSeason.reduce((max, item) => Math.max(max, Number(item.episode?.epNumber ?? 0)), 0);
+      setEpisodeDraft({
+        ...newEpisodeDraft(maxEp),
+        seasonNumber: sNum,
+        epNumber: maxEp + 1,
+      });
       setEditingEpisodeIndex(formData.episodes?.length ?? 0);
       setCurrentVideoFile(null);
       setUploadStatus("idle");
@@ -825,6 +883,15 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     }
   };
 
+  const handleAddSeason = () => {
+    const nextSeason = seasonData.maxSeason + 1;
+    setFormData((prev) => ({
+      ...prev,
+      totalSeasons: Math.max(Number(prev.totalSeasons ?? 1), nextSeason),
+    }));
+    setActiveSeason(nextSeason);
+  };
+
   // ====================================================================
   // Submit Series
   // ====================================================================
@@ -835,10 +902,14 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
     setMessage(null);
 
     try {
+      const highestEpSeason = (formData.episodes ?? []).reduce(
+        (max, ep) => Math.max(max, Number(ep?.seasonNumber ?? 1)),
+        1
+      );
       const payload = {
         ...formData,
         releaseYear: formData.releaseYear ? Number(formData.releaseYear) : null,
-        totalSeasons: formData.totalSeasons ? Number(formData.totalSeasons) : 1,
+        totalSeasons: Math.max(formData.totalSeasons ? Number(formData.totalSeasons) : 1, highestEpSeason),
         genres: Array.isArray(formData.genres)
           ? formData.genres
           : String(formData.genres || "")
@@ -887,7 +958,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
   // ====================================================================
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSubmit} className={`space-y-6 ${editingEpisodeIndex !== null ? "hidden lg:block" : "block"}`}>
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* FORM SERIES UTAMA */}
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-300">
@@ -1055,39 +1126,98 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
 
         {/* DAFTAR EPISODE */}
         <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-lg font-semibold text-slate-100">Daftar Episode</h3>
-              <p className="text-xs text-slate-500">Tambahkan episode dan kelola metadata.</p>
+              <h3 className="text-lg font-semibold text-slate-100">
+                Daftar Season &amp; Episode ({(formData.episodes ?? []).length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                Kelola episode per season. Klik + Season Baru untuk menambah season.
+              </p>
             </div>
-            <button type="button" onClick={() => openEpisodeEditor(null)} className="rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:border-primary-500 hover:text-primary-200">
-              Tambah Episode
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleAddSeason}
+                className="rounded-xl border border-primary-500/40 bg-primary-500/10 px-3.5 py-2 text-xs font-semibold text-primary-300 hover:bg-primary-500/20"
+              >
+                + Season Baru (S{String(seasonData.maxSeason + 1).padStart(2, "0")})
+              </button>
+              <button
+                type="button"
+                onClick={() => openEpisodeEditor(null, activeSeason)}
+                className="rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500"
+              >
+                + Tambah Episode (S{String(activeSeason).padStart(2, "0")})
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 border-b border-slate-800/70 pb-3">
+            {seasonData.seasons.map((seasonNum) => {
+              const isActive = activeSeason === seasonNum;
+              const count = seasonData.bySeason[seasonNum]?.length ?? 0;
+              return (
+                <button
+                  key={seasonNum}
+                  type="button"
+                  onClick={() => setActiveSeason(seasonNum)}
+                  className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+                    isActive
+                      ? "border-primary-500 bg-primary-600 text-white"
+                      : "border-slate-800 bg-slate-950/70 text-slate-300 hover:border-slate-700"
+                  }`}
+                >
+                  Season {seasonNum} <span className="opacity-75">({count})</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="space-y-3">
-            {(formData.episodes ?? []).map((episode, index) => (
-              <div key={episode.episodeId ?? index} className="rounded-2xl border border-slate-800/60 bg-slate-950/60 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-100">
-                      S{String(episode.seasonNumber ?? 1).padStart(2, "0")}E{String(episode.epNumber ?? 0).padStart(2, "0")} — {episode.title}
-                    </p>
-                    <p className="text-xs text-slate-500 line-clamp-2">{episode.description}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => openEpisodeEditor(index)} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => deleteEpisode(index)} className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
-                      Hapus
-                    </button>
+            {(seasonData.bySeason[activeSeason] ?? []).map(({ episode, originalIndex }) => {
+              const hasMux = Boolean(episode.mux_playback_id || episode.mux_video_id);
+              return (
+                <div key={episode.episodeId ?? `${activeSeason}-${originalIndex}`} className="rounded-2xl border border-slate-800/60 bg-slate-950/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-100">
+                          S{String(episode.seasonNumber ?? 1).padStart(2, "0")}E{String(episode.epNumber ?? 0).padStart(2, "0")} — {episode.title}
+                        </p>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            hasMux ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"
+                          }`}
+                        >
+                          {hasMux ? "Ready" : "No Asset"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 line-clamp-2">{episode.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => openEpisodeEditor(originalIndex)} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
+                        Edit
+                      </button>
+                      <button type="button" onClick={() => deleteEpisode(originalIndex)} className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+                        Hapus
+                      </button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+            {!(seasonData.bySeason[activeSeason] ?? []).length && (
+              <div className="rounded-2xl border border-dashed border-slate-800/60 bg-slate-950/40 px-4 py-6 text-center text-xs text-slate-500">
+                <p>Belum ada episode di Season {activeSeason}.</p>
+                <button
+                  type="button"
+                  onClick={() => openEpisodeEditor(null, activeSeason)}
+                  className="mt-2 font-semibold text-primary-300 hover:underline"
+                >
+                  + Tambah Episode Pertama di Season {activeSeason}
+                </button>
               </div>
-            ))}
-            {(!formData.episodes || !formData.episodes.length) && (
-              <p className="rounded-2xl border border-dashed border-slate-800/60 bg-slate-950/40 px-4 py-6 text-center text-xs text-slate-500">Belum ada episode. Tambahkan minimal satu episode sebelum menyimpan series.</p>
             )}
           </div>
         </div>
@@ -1130,22 +1260,44 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
         </div>
       </form>
 
-      {/* EPISODE EDITOR (Studio Card) */}
+      {/* EPISODE EDITOR (Modal Fokus) */}
       {editingEpisodeIndex !== null && (
-        <div className="rounded-2xl border border-primary-500/35 bg-slate-950/80 p-6 space-y-5 shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
-            <div>
-              <h4 className="text-base font-semibold text-slate-100">
-                {episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode Baru"}
-              </h4>
-              <p className="text-xs text-slate-400">
-                Upload video otomatis menggunakan Mux Basic Quality ($0 encoding) &amp; Max 1080p.
-              </p>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+          onClick={closeEpisodeEditor}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-primary-500/35 bg-slate-950 p-6 space-y-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div>
+                <h4 className="text-base font-semibold text-slate-100">
+                  {episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode Baru"}
+                </h4>
+                <p className="text-xs text-slate-400">
+                  Upload video otomatis menggunakan Mux Basic Quality ($0 encoding) &amp; Max 1080p.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+                  Basic • 1080p Max
+                </span>
+                <button
+                  type="button"
+                  onClick={closeEpisodeEditor}
+                  className="rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-            <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
-              Basic • 1080p Max
-            </span>
-          </div>
+            {isDuplicateDraftEpisode && (
+              <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-200">
+                Peringatan: Nomor episode S{String(episodeDraft.seasonNumber ?? 1).padStart(2, "0")}E
+                {String(episodeDraft.epNumber ?? 0).padStart(2, "0")} sudah ada di daftar episode series ini.
+              </div>
+            )}
 
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-4">
@@ -1366,6 +1518,7 @@ export default function SeriesForm({ initialData, onSuccess, submitLabel = "Simp
                 Simpan Episode
               </button>
             </div>
+          </div>
           </div>
         </div>
       )}

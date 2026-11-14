@@ -39,7 +39,21 @@ export default function MovieForm({ initialData, onSuccess, submitLabel = "Simpa
   const [studioStep, setStudioStep] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
 
-  const categoryOptions = useMemo(() => CONTENT_CATEGORIES, []);
+  const [dynamicCategories, setDynamicCategories] = useState(CONTENT_CATEGORIES);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((res) => res.json())
+      .then((json) => {
+        const cats = json?.data?.categories;
+        if (Array.isArray(cats) && cats.length) {
+          setDynamicCategories(Array.from(new Set([...cats, ...CONTENT_CATEGORIES])));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const categoryOptions = useMemo(() => dynamicCategories, [dynamicCategories]);
   const lastFetchedPlaybackRef = useRef(null);
 
   useEffect(() => {

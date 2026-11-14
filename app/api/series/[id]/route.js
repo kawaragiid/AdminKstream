@@ -54,7 +54,9 @@ export async function PUT(request, { params }) {
           const matchedExisting = existingEpisodes.find(
             (ep) =>
               (episode?.episodeId && ep?.episodeId === episode.episodeId) ||
-              (episode?.epNumber !== undefined && ep?.epNumber === episode.epNumber)
+              (episode?.epNumber !== undefined &&
+                ep?.epNumber === episode.epNumber &&
+                Number(ep?.seasonNumber ?? 1) === Number(episode?.seasonNumber ?? 1))
           );
           const episodeMux = await normalizeMuxMetadata({
             assetId: episode?.mux_asset_id ?? matchedExisting?.mux_asset_id,

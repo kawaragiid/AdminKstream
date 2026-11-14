@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const typeStyles = {
   success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
@@ -12,7 +12,19 @@ const typeStyles = {
 const NotificationCenter = ({ initialNotifications = [] }) => {
   const [notifications, setNotifications] = useState(initialNotifications);
   const [loading, setLoading] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [filterMode, setFilterMode] = useState("all");
   const [error, setError] = useState(null);
+
+  const unreadCount = useMemo(
+    () => (notifications ?? []).filter((n) => !n.read).length,
+    [notifications]
+  );
+
+  const visibleNotifications = useMemo(
+    () => (filterMode === "unread" ? (notifications ?? []).filter((n) => !n.read) : notifications ?? []),
+    [notifications, filterMode]
+  );
 
   const refresh = async () => {
     setLoading(true);
@@ -58,6 +70,29 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
     }
   };
 
+  const markAllAsRead = async () => {
+    const unread = (notifications ?? []).filter((n) => !n.read && n.id);
+    if (!unread.length) return;
+    setMarkingAll(true);
+    try {
+      await Promise.all(
+        unread.map((n) =>
+          fetch("/api/notifications", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: n.id }),
+          })
+        )
+      );
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setError(null);
+    } catch (err) {
+      setError(err.message || "Gagal menandai semua notifikasi.");
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   useEffect(() => {
     if (!notifications?.length) {
       refresh();
@@ -72,18 +107,55 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
           <h2 className="text-2xl font-semibold text-slate-100">Notifikasi & Alert</h2>
           <p className="text-sm text-slate-400">Periksa status upload, error API, dan informasi premium user terbaru.</p>
         </div>
-        <button // Tombol refresh dibuat lebih kecil di mobile
+        <div className="flex flex-wrap items-center gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllAsRead}
+              disabled={markingAll}
+              className="rounded-xl border border-primary-500/40 bg-primary-500/10 px-3.5 py-2 text-xs font-semibold text-primary-300 hover:bg-primary-500/20 disabled:opacity-60"
+            >
+              {markingAll ? "Memproses..." : `Tandai Semua Dibaca (${unreadCount})`}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            className="rounded-xl border border-slate-700 px-3.5 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
+            disabled={loading}
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
           type="button"
-          onClick={refresh}
-          className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200"
-          disabled={loading}
+          onClick={() => setFilterMode("all")}
+          className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+            filterMode === "all"
+              ? "border-primary-500 bg-primary-600 text-white"
+              : "border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700"
+          }`}
         >
-          Refresh
+          Semua ({notifications.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setFilterMode("unread")}
+          className={`rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition ${
+            filterMode === "unread"
+              ? "border-primary-500 bg-primary-600 text-white"
+              : "border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700"
+          }`}
+        >
+          Belum Dibaca ({unreadCount})
         </button>
       </div>
 
       <div className="space-y-4">
-        {notifications.map((notif) => (
+        {visibleNotifications.map((notif) => (
           <div key={notif.id} className={`rounded-3xl border px-5 py-4 ${typeStyles[notif.type ?? "info"]}`}>
             <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
               <div>
@@ -99,7 +171,7 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
             </div>
           </div>
         ))}
-        {!notifications.length && !loading && <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-6 text-center text-sm text-slate-400">Tidak ada notifikasi saat ini.</div>}
+        {!visibleNotifications.length && !loading && <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-6 text-center text-sm text-slate-400">Tidak ada notifikasi {filterMode === "unread" ? "yang belum dibaca" : "saat ini"}.</div>}
         {loading && <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-6 text-center text-sm text-slate-400">Memuat notifikasi...</div>}
         {error && <div className="rounded-3xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 text-center text-sm text-rose-200">{error}</div>}
       </div>

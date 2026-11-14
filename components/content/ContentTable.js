@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { CONTENT_CATEGORIES, CONTENT_TYPES } from "@/utils/constants";
 import MovieForm from "@/components/upload/MovieForm";
 import SeriesForm from "@/components/upload/SeriesForm";
@@ -24,6 +25,42 @@ export default function ContentTable() {
   const [muxError, setMuxError] = useState(null);
   const [typeFilter, setTypeFilter] = useState("all");
   const [viewMode, setViewMode] = useState("list");
+  const [activeSeason, setActiveSeason] = useState(1);
+
+  const seriesSeasonData = useMemo(() => {
+    if (!selectedItem || selectedItem.type !== CONTENT_TYPES.SERIES) {
+      return { seasons: [1], maxSeason: 1, episodesBySeason: { 1: [] } };
+    }
+    const episodesBySeason = {};
+    const seasonSet = new Set();
+    const declared = Number(selectedItem.totalSeasons ?? 1);
+    for (let s = 1; s <= declared; s += 1) {
+      seasonSet.add(s);
+      episodesBySeason[s] = [];
+    }
+    for (const ep of selectedItem.episodes ?? []) {
+      const s = Math.max(1, Number(ep.seasonNumber ?? 1));
+      seasonSet.add(s);
+      if (!episodesBySeason[s]) episodesBySeason[s] = [];
+      episodesBySeason[s].push(ep);
+    }
+    const seasons = Array.from(seasonSet).sort((a, b) => a - b);
+    for (const s of seasons) {
+      episodesBySeason[s].sort((a, b) => Number(a.epNumber ?? 0) - Number(b.epNumber ?? 0));
+    }
+    const maxSeason = seasons[seasons.length - 1] ?? 1;
+    return { seasons, maxSeason, episodesBySeason };
+  }, [selectedItem]);
+
+  useEffect(() => {
+    if (selectedItem?.type === CONTENT_TYPES.SERIES) {
+      const firstSeason = (selectedItem.episodes ?? []).reduce(
+        (min, ep) => Math.min(min, Math.max(1, Number(ep.seasonNumber ?? 1))),
+        Number(selectedItem.totalSeasons ?? 1) || 1
+      );
+      setActiveSeason(Math.max(1, firstSeason));
+    }
+  }, [selectedItem]);
 
   const categories = useMemo(() => ["", ...CONTENT_CATEGORIES], []);
 
@@ -598,14 +635,52 @@ export default function ContentTable() {
                     <p className="text-slate-400">Subtitle: {(selectedItem.subtitles ?? []).length} track</p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                      Daftar Episode ({(selectedItem.episodes ?? []).length})
-                    </p>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                        Daftar Episode ({(selectedItem.episodes ?? []).length})
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          href={`/upload?tab=episode&seriesId=${encodeURIComponent(selectedItem.id)}&season=${activeSeason}`}
+                          className="rounded-lg bg-primary-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-primary-500"
+                        >
+                          + Tambah Episode
+                        </Link>
+                        <Link
+                          href={`/upload?tab=episode&seriesId=${encodeURIComponent(selectedItem.id)}&season=${seriesSeasonData.maxSeason + 1}`}
+                          className="rounded-lg border border-primary-500/40 bg-primary-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-primary-300 transition hover:bg-primary-500/20"
+                        >
+                          + Season Baru
+                        </Link>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {seriesSeasonData.seasons.map((seasonNum) => {
+                        const isActive = activeSeason === seasonNum;
+                        const count = seriesSeasonData.episodesBySeason[seasonNum]?.length ?? 0;
+                        return (
+                          <button
+                            key={seasonNum}
+                            type="button"
+                            onClick={() => setActiveSeason(seasonNum)}
+                            className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                              isActive
+                                ? "border-primary-500 bg-primary-600 text-white"
+                                : "border-slate-800 bg-slate-900 text-slate-300 hover:border-slate-700"
+                            }`}
+                          >
+                            Season {seasonNum} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <div className="max-h-72 space-y-2 overflow-y-auto pr-1 text-xs">
-                      {(selectedItem.episodes ?? []).map((episode) => (
+                      {(seriesSeasonData.episodesBySeason[activeSeason] ?? []).map((episode) => (
                         <div
-                          key={episode.episodeId ?? episode.epNumber}
+                          key={episode.episodeId ?? `${activeSeason}-${episode.epNumber}`}
                           className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 space-y-1"
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -627,8 +702,16 @@ export default function ContentTable() {
                           </p>
                         </div>
                       ))}
-                      {!selectedItem.episodes?.length && (
-                        <p className="text-slate-500">Belum ada episode.</p>
+                      {!(seriesSeasonData.episodesBySeason[activeSeason] ?? []).length && (
+                        <div className="rounded-xl border border-dashed border-slate-800 p-4 text-center text-slate-500">
+                          <p>Belum ada episode di Season {activeSeason}.</p>
+                          <Link
+                            href={`/upload?tab=episode&seriesId=${encodeURIComponent(selectedItem.id)}&season=${activeSeason}`}
+                            className="mt-2 inline-block text-xs font-semibold text-primary-300 hover:underline"
+                          >
+                            + Upload Episode Pertama di Season {activeSeason}
+                          </Link>
+                        </div>
                       )}
                     </div>
                   </div>

@@ -1,12 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const SettingsForm = ({ initialSettings }) => {
   const [settings, setSettings] = useState(initialSettings);
   const [newCategory, setNewCategory] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [contentItems, setContentItems] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/content")
+      .then((res) => res.json())
+      .then((json) => {
+        if (Array.isArray(json?.data)) setContentItems(json.data);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSelectHeroContent = (contentId) => {
+    const picked = contentItems.find((item) => item.id === contentId);
+    setSettings((prev) => ({
+      ...prev,
+      hero: {
+        ...prev.hero,
+        contentId,
+        title: picked?.title || prev.hero?.title || "",
+        backgroundUrl: picked?.backdropUrl || picked?.thumbnail || prev.hero?.backgroundUrl || "",
+      },
+    }));
+  };
 
   const addCategory = () => {
     if (!newCategory.trim()) return;
@@ -88,8 +111,23 @@ const SettingsForm = ({ initialSettings }) => {
 
       <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
         <h3 className="text-lg font-semibold text-slate-100">Hero Banner Homepage</h3>
-        <p className="text-sm text-slate-400">Atur konten unggulan yang tampil di homepage user.</p>
+        <p className="text-sm text-slate-400">Pilih konten unggulan yang tampil di homepage user.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <label className="text-sm text-slate-300 md:col-span-2">
+            Pilih Konten Unggulan (Otomatis isi ID, Judul &amp; Background)
+            <select
+              value={settings.hero?.contentId ?? ""}
+              onChange={(e) => handleSelectHeroContent(e.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+            >
+              <option value="">-- Pilih Movie / Series --</option>
+              {contentItems.map((item) => (
+                <option key={`${item.type}-${item.id}`} value={item.id}>
+                  [{item.type === "series" ? "Series" : "Movie"}] {item.title}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm text-slate-300">
             Judul
             <input value={settings.hero?.title ?? ""} onChange={(event) => updateHero("title", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
@@ -106,27 +144,6 @@ const SettingsForm = ({ initialSettings }) => {
             Background URL
             <input value={settings.hero?.backgroundUrl ?? ""} onChange={(event) => updateHero("backgroundUrl", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
           </label>
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
-        <h3 className="text-lg font-semibold text-slate-100">Tema Dashboard</h3>
-        <p className="text-sm text-slate-400">Ubah tampilan default dashboard admin.</p>
-        <div className="mt-4 flex gap-4">
-          <button
-            type="button"
-            onClick={() => setSettings((prev) => ({ ...prev, theme: { mode: "dark" } }))}
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${settings.theme?.mode === "dark" ? "border-primary-500 bg-primary-500/20 text-primary-200" : "border-slate-700 bg-slate-950 text-slate-300"}`}
-          >
-            Dark
-          </button>
-          <button
-            type="button"
-            onClick={() => setSettings((prev) => ({ ...prev, theme: { mode: "light" } }))}
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition ${settings.theme?.mode === "light" ? "border-primary-500 bg-primary-500/20 text-primary-200" : "border-slate-700 bg-slate-950 text-slate-300"}`}
-          >
-            Light
-          </button>
         </div>
       </div>
 

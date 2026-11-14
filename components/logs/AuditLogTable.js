@@ -1,11 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const AuditLogTable = ({ initialLogs = [] }) => {
   const [logs, setLogs] = useState(initialLogs);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [actionFilter, setActionFilter] = useState("all");
+
+  const filteredLogs = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (logs ?? []).filter((log) => {
+      const actionStr = String(log.action ?? "").toLowerCase();
+      if (actionFilter !== "all" && !actionStr.includes(actionFilter)) {
+        return false;
+      }
+      if (!q) return true;
+      const hay = [
+        log.action,
+        log.targetType,
+        log.targetId,
+        log.actor?.displayName,
+        log.actor?.email,
+        log.metadata ? JSON.stringify(log.metadata) : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [logs, search, actionFilter]);
 
   const refreshLogs = async () => {
     setLoading(true);
@@ -41,6 +66,9 @@ const AuditLogTable = ({ initialLogs = [] }) => {
     if (!logs.length) {
       return <div className="px-4 py-6 text-center text-sm text-slate-500">Belum ada aktivitas admin.</div>;
     }
+    if (!filteredLogs.length) {
+      return <div className="px-4 py-6 text-center text-sm text-slate-500">Tidak ada log yang cocok dengan filter.</div>;
+    }
 
     return (
       <>
@@ -56,7 +84,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 bg-slate-900/40">
-              {logs.map((log) => (
+              {filteredLogs.map((log) => (
                 <tr key={log.id ?? `${log.action}-${log.createdAt}`}>
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-300">{log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}</td>
                   <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-200">
@@ -79,7 +107,7 @@ const AuditLogTable = ({ initialLogs = [] }) => {
 
         {/* Mobile Card View */}
         <div className="space-y-4 p-4 md:hidden">
-          {logs.map((log) => (
+          {filteredLogs.map((log) => (
             <div key={log.id ?? `${log.action}-${log.createdAt}-mobile`} className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 text-sm">
               <div className="flex items-start justify-between gap-4">
                 <p className="font-semibold text-slate-100 truncate">{log.action}</p>
@@ -99,16 +127,38 @@ const AuditLogTable = ({ initialLogs = [] }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold text-slate-100">Riwayat Aksi Admin</h2>
           <p className="text-sm text-slate-400">Audit trail untuk upload, edit, hapus konten, serta manajemen user.</p>
         </div>
-        <button type="button" onClick={refreshLogs} className="rounded-full border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200" disabled={loading}>
-          Refresh
+        <button type="button" onClick={refreshLogs} className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:border-primary-500 hover:text-primary-200" disabled={loading}>
+          {loading ? "Memuat..." : "Refresh"}
         </button>
       </div>
-      <div className="rounded-3xl border border-slate-800/60">
+
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/70 p-3">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cari aksi, target ID, atau admin..."
+          className="min-w-[220px] flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-primary-500 focus:outline-none"
+        />
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          className="rounded-xl border border-slate-800 bg-slate-950 px-3.5 py-2 text-sm text-slate-200"
+        >
+          <option value="all">Semua Aksi</option>
+          <option value="create">Create</option>
+          <option value="update">Update</option>
+          <option value="delete">Delete</option>
+          <option value="user">User / Role</option>
+        </select>
+        <span className="text-xs text-slate-400">{filteredLogs.length} log</span>
+      </div>
+
+      <div className="rounded-3xl border border-slate-800/60 overflow-hidden">
         {renderContent()}
       </div>
     </div>

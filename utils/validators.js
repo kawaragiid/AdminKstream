@@ -53,8 +53,8 @@ export function validateMoviePayload(payload) {
     errors.description = "Deskripsi minimal 10 karakter.";
   }
 
-  if (!payload.category || !CONTENT_CATEGORIES.includes(payload.category)) {
-    errors.category = "Kategori tidak valid.";
+  if (!payload.category || typeof payload.category !== "string" || payload.category.trim().length < 2) {
+    errors.category = "Kategori wajib diisi.";
   }
 
   const playback = payload.mux_playback_id ?? payload.mux_video_id;
@@ -77,6 +77,10 @@ export function validateMoviePayload(payload) {
 
 export function validateEpisodePayload(episode, index = 0) {
   const errors = {};
+
+  if (episode.seasonNumber !== undefined && (typeof episode.seasonNumber !== "number" || episode.seasonNumber < 1)) {
+    errors.seasonNumber = "Nomor season harus berupa angka minimal 1.";
+  }
 
   if (typeof episode.epNumber !== "number" || episode.epNumber < 1) {
     errors.epNumber = "Nomor episode harus berupa angka lebih besar dari 0.";
@@ -116,8 +120,8 @@ export function validateSeriesPayload(payload) {
     errors.description = "Deskripsi minimal 10 karakter.";
   }
 
-  if (!payload.category || !CONTENT_CATEGORIES.includes(payload.category)) {
-    errors.category = "Kategori tidak valid.";
+  if (!payload.category || typeof payload.category !== "string" || payload.category.trim().length < 2) {
+    errors.category = "Kategori wajib diisi.";
   }
 
   if (payload.episodes !== undefined && !Array.isArray(payload.episodes)) {

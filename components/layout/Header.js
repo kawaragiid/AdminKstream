@@ -36,7 +36,22 @@ const Header = ({ session }) => {
           <span>Mux Basic Guard</span>
         </div>
 
-        <div className="flex items-center gap-2.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-sm">
+        <Link
+          href="/notifications"
+          title="Notifikasi"
+          aria-label="Notifikasi"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 text-slate-300 transition hover:border-slate-700 hover:text-white"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0v1a3 3 0 1 1-6 0v-1m6 0H9" />
+          </svg>
+        </Link>
+
+        <Link
+          href="/profile"
+          title="Pengaturan Profil"
+          className="flex items-center gap-2.5 rounded-full border border-slate-800 bg-slate-900/80 px-2.5 py-1 text-sm transition hover:border-slate-700"
+        >
           <span className="inline-flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-primary-600 text-xs font-semibold text-white">
             {session?.displayName ? session.displayName.slice(0, 2).toUpperCase() : "AK"}
           </span>
@@ -46,7 +61,7 @@ const Header = ({ session }) => {
             </p>
             <p className="text-[10px] uppercase tracking-wider text-slate-400">{session?.role ?? "admin"}</p>
           </div>
-        </div>
+        </Link>
         <LogoutButton />
       </div>
     </header>

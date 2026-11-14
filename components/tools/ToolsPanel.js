@@ -52,8 +52,16 @@ const ToolsPanel = () => {
         window.URL.revokeObjectURL(url);
       } else {
         const data = await response.json();
-        setMessage({ type: "info", text: `Export ${type} (JSON) siap di console.` });
-        console.log(`Export ${type}`, data);
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${type}-export.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        setMessage({ type: "success", text: `File ${type}-export.json berhasil diunduh.` });
       }
     } catch (error) {
       setMessage({ type: "error", text: error.message });

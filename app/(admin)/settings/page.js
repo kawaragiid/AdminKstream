@@ -23,7 +23,7 @@ export default async function SettingsPage() {
       <header className="space-y-2">
         <h2 className="text-2xl font-semibold text-slate-100">Konfigurasi Platform</h2>
         <p className="text-sm text-slate-400">
-          Kelola kategori, konten unggulan, dan tema dashboard.
+          Kelola kategori konten dan Hero Banner homepage.
         </p>
       </header>
       <SettingsForm initialSettings={settings} />

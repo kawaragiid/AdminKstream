@@ -47,6 +47,7 @@ export default function ProfileForm() {
   return (
     <div className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6">
       <div className="flex items-center gap-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={photoURL || '/logo.png'} alt="avatar" className="h-16 w-16 rounded-full object-cover border border-slate-800" />
         <div className="space-y-1 text-xs text-slate-400">
           <p className="font-medium text-slate-300">Avatar Profil</p>
