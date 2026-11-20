@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ADMIN_ROLES, USER_PLANS, CUSTOMER_ROLE } from "@/utils/constants";
 
 const roleOptions = [...Object.values(ADMIN_ROLES), CUSTOMER_ROLE];
@@ -28,7 +28,9 @@ const UserTable = ({ initialUsers = [] }) => {
   const [users, setUsers] = useState(initialUsers);
   const [loading, setLoading] = useState(false);
   const [savingUid, setSavingUid] = useState(null);
-  const [error, setError] = useState(null);
+  const [pageError, setPageError] = useState(null);
+  const [drawerError, setDrawerError] = useState(null);
+  const [createError, setCreateError] = useState(null);
   const [notice, setNotice] = useState(null);
 
   const [search, setSearch] = useState("");
@@ -42,12 +44,22 @@ const UserTable = ({ initialUsers = [] }) => {
   const [confirmSuspend, setConfirmSuspend] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [createForm, setCreateForm] = useState({
     email: "",
     password: "",
     displayName: "",
     role: ADMIN_ROLES.ADMIN,
   });
+
+  const lastFocusedRef = useRef(null);
+
+  const restoreFocus = () => {
+    const prev = lastFocusedRef.current;
+    if (prev && typeof prev.focus === "function") {
+      setTimeout(() => prev.focus(), 0);
+    }
+  };
 
   const stats = useMemo(() => {
     const total = users.length;
@@ -77,18 +89,49 @@ const UserTable = ({ initialUsers = [] }) => {
   }, [users, search, roleFilter, planFilter, statusFilter]);
 
   const openUserDrawer = (user) => {
+    lastFocusedRef.current = document.activeElement;
     setSelectedUser(user);
     setDraftRole(user.role ?? CUSTOMER_ROLE);
     setDraftPlan(user.plan ?? USER_PLANS.FREE);
     setConfirmSuspend(false);
     setNotice(null);
-    setError(null);
+    setDrawerError(null);
   };
 
   const closeDrawer = () => {
     setSelectedUser(null);
     setConfirmSuspend(false);
+    setDrawerError(null);
+    restoreFocus();
   };
+
+  const openCreateModal = () => {
+    lastFocusedRef.current = document.activeElement;
+    setCreateError(null);
+    setShowPassword(false);
+    setShowCreate(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreate(false);
+    setCreateError(null);
+    setShowPassword(false);
+    restoreFocus();
+  };
+
+  useEffect(() => {
+    if (!selectedUser && !showCreate) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (showCreate) closeCreateModal();
+        else if (selectedUser) closeDrawer();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUser, showCreate]);
 
   const syncUserInState = (uid, patch) => {
     setUsers((prev) => prev.map((u) => (u.uid === uid ? { ...u, ...patch } : u)));
@@ -104,9 +147,9 @@ const UserTable = ({ initialUsers = [] }) => {
         throw new Error(result?.error ?? "Gagal memuat user");
       }
       setUsers(result?.data?.users ?? []);
-      setError(null);
+      setPageError(null);
     } catch (err) {
-      setError(err.message);
+      setPageError(err.message);
     } finally {
       setLoading(false);
     }
@@ -124,11 +167,11 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(json.error || "Gagal memperbarui role.");
       }
-      setError(null);
+      setDrawerError(null);
       setNotice("Role dan paket pengguna berhasil diperbarui.");
       syncUserInState(uid, { role, plan });
     } catch (err) {
-      setError(err.message || "Gagal memperbarui role.");
+      setDrawerError(err.message || "Gagal memperbarui role.");
     } finally {
       setSavingUid(null);
     }
@@ -146,12 +189,12 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(json.error || "Gagal memperbarui status pengguna.");
       }
-      setError(null);
+      setDrawerError(null);
       setConfirmSuspend(false);
       setNotice(disabled ? "Akun pengguna berhasil di-suspend." : "Akun pengguna diaktifkan kembali.");
       syncUserInState(uid, { disabled, status: disabled ? "suspend" : "active" });
     } catch (err) {
-      setError(err.message || "Gagal memperbarui status pengguna.");
+      setDrawerError(err.message || "Gagal memperbarui status pengguna.");
     } finally {
       setSavingUid(null);
     }
@@ -170,17 +213,17 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(result.error ?? "Gagal menambahkan admin");
       }
-      setError(null);
+      setCreateError(null);
       setNotice(`Akun ${result.data?.email ?? ""} berhasil dibuat.`);
       if (result?.data) {
         setUsers((prev) => [result.data, ...prev]);
       } else {
         await refreshUsers();
       }
-      setShowCreate(false);
+      closeCreateModal();
       setCreateForm({ email: "", password: "", displayName: "", role: ADMIN_ROLES.ADMIN });
     } catch (err) {
-      setError(err.message);
+      setCreateError(err.message);
     } finally {
       setSavingUid(null);
     }
@@ -198,11 +241,11 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(json.error || "Gagal memperpanjang langganan.");
       }
-      setError(null);
+      setDrawerError(null);
       setNotice(`Langganan diperpanjang +${days} hari.`);
       syncUserInState(uid, { isActive: true, expiresAt: json.expiresAt ?? selectedUser?.expiresAt ?? null });
     } catch (err) {
-      setError(err.message || "Gagal memperpanjang langganan.");
+      setDrawerError(err.message || "Gagal memperpanjang langganan.");
     } finally {
       setSavingUid(null);
     }
@@ -220,11 +263,11 @@ const UserTable = ({ initialUsers = [] }) => {
       if (!response.ok) {
         throw new Error(json.error || "Gagal mengubah status langganan.");
       }
-      setError(null);
+      setDrawerError(null);
       setNotice(isActive ? "Langganan diaktifkan." : "Langganan dinonaktifkan.");
       syncUserInState(uid, { isActive });
     } catch (err) {
-      setError(err.message || "Gagal mengubah status langganan.");
+      setDrawerError(err.message || "Gagal mengubah status langganan.");
     } finally {
       setSavingUid(null);
     }
@@ -245,14 +288,14 @@ const UserTable = ({ initialUsers = [] }) => {
             type="button"
             onClick={refreshUsers}
             disabled={loading}
-            className="rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 disabled:opacity-50"
+            className="min-h-[44px] rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-600 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
           >
             {loading ? "Memuat..." : "↻ Refresh"}
           </button>
           <button
             type="button"
-            onClick={() => setShowCreate(true)}
-            className="rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-primary-600/30 transition hover:bg-primary-500"
+            onClick={openCreateModal}
+            className="min-h-[44px] rounded-xl bg-primary-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-primary-600/30 transition hover:bg-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             + Tambah Admin / Staff
           </button>
@@ -264,28 +307,34 @@ const UserTable = ({ initialUsers = [] }) => {
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Total Pengguna</p>
           <p className="mt-1.5 text-2xl font-semibold text-slate-100 tabular-nums">{stats.total}</p>
-          <p className="mt-1 text-xs text-slate-500">Terdaftar di platform</p>
+          <p className="mt-1 text-xs text-slate-400">Terdaftar di platform</p>
         </div>
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Tim Admin &amp; Editor</p>
           <p className="mt-1.5 text-2xl font-semibold text-sky-400 tabular-nums">{stats.staff}</p>
-          <p className="mt-1 text-xs text-slate-500">Super-admin, admin, editor</p>
+          <p className="mt-1 text-xs text-slate-400">Super-admin, admin, editor</p>
         </div>
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Langganan / Premium</p>
           <p className="mt-1.5 text-2xl font-semibold text-emerald-400 tabular-nums">{stats.premiumActive}</p>
-          <p className="mt-1 text-xs text-slate-500">Paket premium atau aktif</p>
+          <p className="mt-1 text-xs text-slate-400">Paket premium atau aktif</p>
         </div>
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 p-4">
           <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Akun Suspended</p>
           <p className="mt-1.5 text-2xl font-semibold text-rose-400 tabular-nums">{stats.suspended}</p>
-          <p className="mt-1 text-xs text-slate-500">Akses dibatasi sementara</p>
+          <p className="mt-1 text-xs text-slate-400">Akses dibatasi sementara</p>
         </div>
       </section>
 
-      {error && (
-        <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
-          {error}
+      {pageError && (
+        <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-xs text-rose-200">
+          {pageError}
+        </div>
+      )}
+
+      {notice && !selectedUser && (
+        <div role="status" className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+          {notice}
         </div>
       )}
 
@@ -377,8 +426,16 @@ const UserTable = ({ initialUsers = [] }) => {
                 return (
                   <tr
                     key={user.uid}
+                    tabIndex={0}
+                    role="button"
                     onClick={() => openUserDrawer(user)}
-                    className="cursor-pointer transition hover:bg-slate-800/40"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openUserDrawer(user);
+                      }
+                    }}
+                    className="cursor-pointer transition hover:bg-slate-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
                   >
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
@@ -389,7 +446,7 @@ const UserTable = ({ initialUsers = [] }) => {
                           <p className="truncate text-sm font-medium text-slate-100">
                             {user.displayName || user.email}
                           </p>
-                          <p className="truncate text-xs text-slate-500">{user.email}</p>
+                          <p className="truncate text-xs text-slate-400">{user.email}</p>
                         </div>
                       </div>
                     </td>
@@ -422,7 +479,7 @@ const UserTable = ({ initialUsers = [] }) => {
                         >
                           {user.isActive ? "Aktif" : "Nonaktif"}
                         </span>
-                        <p className="text-[11px] text-slate-500 tabular-nums">
+                        <p className="text-[11px] text-slate-400 tabular-nums">
                           {user.expiresAt
                             ? `s/d ${new Date(user.expiresAt).toLocaleDateString("id-ID")}`
                             : "Tanpa batas"}
@@ -444,7 +501,7 @@ const UserTable = ({ initialUsers = [] }) => {
                       <button
                         type="button"
                         onClick={() => openUserDrawer(user)}
-                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:border-primary-500 hover:text-primary-200"
+                        className="min-h-[44px] min-w-[44px] rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-primary-500 hover:text-primary-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                       >
                         Kelola
                       </button>
@@ -454,7 +511,7 @@ const UserTable = ({ initialUsers = [] }) => {
               })}
               {!filteredUsers.length && (
                 <tr>
-                  <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={6}>
+                  <td className="px-4 py-10 text-center text-sm text-slate-400" colSpan={6}>
                     Tidak ada pengguna yang cocok dengan filter.
                   </td>
                 </tr>
@@ -470,8 +527,16 @@ const UserTable = ({ initialUsers = [] }) => {
             return (
               <div
                 key={`${user.uid}-mobile`}
+                tabIndex={0}
+                role="button"
                 onClick={() => openUserDrawer(user)}
-                className="cursor-pointer rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3 transition hover:border-slate-700"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openUserDrawer(user);
+                  }
+                }}
+                className="cursor-pointer rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3 transition hover:border-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -482,7 +547,7 @@ const UserTable = ({ initialUsers = [] }) => {
                       <p className="truncate text-sm font-semibold text-slate-100">
                         {user.displayName || user.email}
                       </p>
-                      <p className="truncate text-xs text-slate-500">{user.email}</p>
+                      <p className="truncate text-xs text-slate-400">{user.email}</p>
                     </div>
                   </div>
                   <span
@@ -500,7 +565,7 @@ const UserTable = ({ initialUsers = [] }) => {
                     <p>
                       {user.role} • {user.plan}
                     </p>
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-[11px] text-slate-400">
                       Masa aktif:{" "}
                       {user.expiresAt
                         ? new Date(user.expiresAt).toLocaleDateString("id-ID")
@@ -515,7 +580,7 @@ const UserTable = ({ initialUsers = [] }) => {
                       e.stopPropagation();
                       openUserDrawer(user);
                     }}
-                    className="shrink-0 rounded-lg border border-slate-700 px-3 py-1 font-semibold text-slate-200"
+                    className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg border border-slate-700 px-3 py-2 font-semibold text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                   >
                     Kelola
                   </button>
@@ -523,6 +588,11 @@ const UserTable = ({ initialUsers = [] }) => {
               </div>
             );
           })}
+          {!filteredUsers.length && (
+            <div className="py-10 text-center text-sm text-slate-400">
+              Tidak ada pengguna yang cocok dengan filter.
+            </div>
+          )}
         </div>
       </div>
 
@@ -533,6 +603,9 @@ const UserTable = ({ initialUsers = [] }) => {
           onClick={closeDrawer}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="user-drawer-title"
             className="h-full w-full max-w-md overflow-y-auto border-l border-slate-800 bg-slate-950 p-6 shadow-2xl space-y-6"
             onClick={(e) => e.stopPropagation()}
           >
@@ -542,25 +615,26 @@ const UserTable = ({ initialUsers = [] }) => {
                   {getInitials(selectedUser)}
                 </span>
                 <div className="min-w-0">
-                  <h3 className="truncate text-base font-semibold text-slate-100">
+                  <h3 id="user-drawer-title" className="truncate text-base font-semibold text-slate-100">
                     {selectedUser.displayName || selectedUser.email}
                   </h3>
                   <p className="truncate text-xs text-slate-400">{selectedUser.email}</p>
-                  <p className="truncate font-mono text-[10px] text-slate-500">{selectedUser.uid}</p>
+                  <p className="truncate font-mono text-[10px] text-slate-400">{selectedUser.uid}</p>
                 </div>
               </div>
               <button
                 type="button"
+                aria-label="Tutup drawer"
                 onClick={closeDrawer}
-                className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-xs font-semibold text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 ✕
               </button>
             </header>
 
-            {error && (
+            {drawerError && (
               <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
-                {error}
+                {drawerError}
               </div>
             )}
 
@@ -719,26 +793,32 @@ const UserTable = ({ initialUsers = [] }) => {
       {showCreate && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
-          onClick={() => setShowCreate(false)}
+          onClick={closeCreateModal}
         >
           <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-admin-modal-title"
             onSubmit={createAdmin}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-950 p-6 shadow-2xl"
           >
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-base font-semibold text-slate-100">Tambah Admin / Staff</h3>
+              <h3 id="create-admin-modal-title" className="text-base font-semibold text-slate-100">
+                Tambah Admin / Staff
+              </h3>
               <button
                 type="button"
-                onClick={() => setShowCreate(false)}
-                className="text-xs text-slate-400 hover:text-white"
+                aria-label="Tutup modal"
+                onClick={closeCreateModal}
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-800 bg-slate-900 text-xs text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 ✕
               </button>
             </div>
-            {error && (
+            {createError && (
               <div role="alert" className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
-                {error}
+                {createError}
               </div>
             )}
             <label className="block text-xs font-medium text-slate-300">
@@ -747,7 +827,7 @@ const UserTable = ({ initialUsers = [] }) => {
                 value={createForm.displayName}
                 onChange={(event) => setCreateForm((prev) => ({ ...prev, displayName: event.target.value }))}
                 placeholder="Nama lengkap"
-                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200 focus:border-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 required
               />
             </label>
@@ -758,27 +838,37 @@ const UserTable = ({ initialUsers = [] }) => {
                 value={createForm.email}
                 onChange={(event) => setCreateForm((prev) => ({ ...prev, email: event.target.value }))}
                 placeholder="admin@kstream.id"
-                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200 focus:border-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 required
               />
             </label>
             <label className="block text-xs font-medium text-slate-300">
               Password (min. 6 karakter)
-              <input
-                type="password"
-                minLength={6}
-                value={createForm.password}
-                onChange={(event) => setCreateForm((prev) => ({ ...prev, password: event.target.value }))}
-                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200"
-                required
-              />
+              <div className="relative mt-1.5">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  minLength={6}
+                  value={createForm.password}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, password: event.target.value }))}
+                  className="w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 pr-20 text-sm text-slate-200 focus:border-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 min-h-[36px] rounded-lg px-2.5 text-xs font-medium text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                >
+                  {showPassword ? "Tutup" : "Lihat"}
+                </button>
+              </div>
             </label>
             <label className="block text-xs font-medium text-slate-300">
               Role
               <select
                 value={createForm.role}
                 onChange={(event) => setCreateForm((prev) => ({ ...prev, role: event.target.value }))}
-                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200"
+                className="mt-1.5 w-full rounded-xl border border-slate-800 bg-slate-900 px-3.5 py-2.5 text-sm text-slate-200 focus:border-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 {Object.values(ADMIN_ROLES).map((role) => (
                   <option key={role} value={role}>
@@ -790,15 +880,15 @@ const UserTable = ({ initialUsers = [] }) => {
             <div className="flex justify-end gap-2.5 pt-2">
               <button
                 type="button"
-                onClick={() => setShowCreate(false)}
-                className="rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white"
+                onClick={closeCreateModal}
+                className="min-h-[44px] rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 Batal
               </button>
               <button
                 type="submit"
                 disabled={savingUid === "create"}
-                className="rounded-xl bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 disabled:opacity-50"
+                className="min-h-[44px] rounded-xl bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
               >
                 {savingUid === "create" ? "Menyimpan..." : "Simpan Akun"}
               </button>

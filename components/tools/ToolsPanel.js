@@ -322,6 +322,8 @@ const ToolsPanel = ({ userRole = "admin" }) => {
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
           className={`rounded-2xl border px-4 py-3 text-sm ${
             message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"

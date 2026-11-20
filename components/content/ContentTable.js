@@ -23,6 +23,8 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [muxDetails, setMuxDetails] = useState(null);
   const [muxLoading, setMuxLoading] = useState(false);
   const [muxError, setMuxError] = useState(null);
@@ -33,6 +35,14 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   const [deletingEpisodeId, setDeletingEpisodeId] = useState(null);
   const fetchAbortRef = useRef(null);
   const detailAbortRef = useRef(null);
+  const lastFocusedRef = useRef(null);
+
+  const restoreFocus = () => {
+    const prev = lastFocusedRef.current;
+    if (prev && typeof prev.focus === "function") {
+      setTimeout(() => prev.focus(), 0);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -163,17 +173,18 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     fetchData(filtersDefault);
   };
 
-  const handleDelete = async (item) => {
+  const requestDelete = (item) => {
     if (!canDelete) return;
-    const confirmed = window.confirm(
-      item.type === CONTENT_TYPES.MOVIE
-        ? `Hapus movie "${item.title}"? Tindakan ini tidak bisa dibatalkan.`
-        : `Hapus series "${item.title}" beserta seluruh episode?`
-    );
-    if (!confirmed) return;
+    lastFocusedRef.current = document.activeElement;
+    setConfirmDeleteItem(item);
+  };
+
+  const handleDelete = async (item) => {
+    if (!canDelete || !item) return;
 
     setDeletingId(item.id);
     setDetailError(null);
+    setNotice(null);
     try {
       const endpoint = item.type === CONTENT_TYPES.MOVIE ? "/api/movies" : "/api/series";
       const response = await fetch(`${endpoint}/${item.id}`, { method: "DELETE" });
@@ -181,8 +192,15 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
         const result = await response.json().catch(() => ({}));
         throw new Error(result.error ?? "Gagal menghapus konten.");
       }
+      setConfirmDeleteItem(null);
       setSelectedItem(null);
+      setNotice(
+        item.type === CONTENT_TYPES.MOVIE
+          ? `Movie "${item.title}" berhasil dihapus.`
+          : `Series "${item.title}" berhasil dihapus.`
+      );
       await fetchData();
+      restoreFocus();
     } catch (err) {
       const msg = err?.message ?? "Gagal menghapus konten.";
       setError(msg);
@@ -193,6 +211,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
   };
 
   const openDetails = async (item) => {
+    lastFocusedRef.current = document.activeElement;
     detailAbortRef.current?.abort();
     const controller = new AbortController();
     detailAbortRef.current = controller;
@@ -327,6 +346,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     setMuxDetails(null);
     setMuxError(null);
     setMuxLoading(false);
+    restoreFocus();
   };
 
   const requestCloseDrawer = () => {
@@ -336,6 +356,24 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
     }
     closeDrawer();
   };
+
+  useEffect(() => {
+    if (!selectedItem && !confirmDeleteItem) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (confirmDeleteItem) {
+          setConfirmDeleteItem(null);
+          restoreFocus();
+        } else if (selectedItem) {
+          requestCloseDrawer();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedItem, confirmDeleteItem, editMode]);
 
   const handleQuickDeleteEpisode = async (episode) => {
     if (!canDelete || !selectedItem?.id) return;
@@ -455,6 +493,11 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
       </form>
 
       {/* Catalog Container */}
+      {notice && (
+        <div role="status" className="rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-200">
+          {notice}
+        </div>
+      )}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/75 overflow-hidden">
         {viewMode === "list" ? (
           <>
@@ -484,17 +527,41 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
-                  {filteredItems.map((item) => {
-                    const badge = getMuxStatusBadge(item);
-                    const isSelected = selectedItem?.id === item.id && selectedItem?.type === item.type;
-                    return (
-                      <tr
-                        key={`${item.type}-${item.id}`}
-                        onClick={() => openDetails(item)}
-                        className={`cursor-pointer transition ${
-                          isSelected ? "bg-primary-600/10" : "hover:bg-slate-800/40"
-                        }`}
-                      >
+                  {loading && !filteredItems.length
+                    ? Array.from({ length: 5 }).map((_, idx) => (
+                        <tr key={`skeleton-${idx}`} className="animate-pulse motion-reduce:animate-none">
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-14 rounded-lg bg-slate-800" />
+                              <div className="h-4 w-40 rounded bg-slate-800" />
+                            </div>
+                          </td>
+                          <td className="px-4 py-3.5"><div className="h-5 w-14 rounded bg-slate-800" /></td>
+                          <td className="px-4 py-3.5"><div className="h-4 w-20 rounded bg-slate-800" /></td>
+                          <td className="px-4 py-3.5"><div className="h-5 w-20 rounded-full bg-slate-800" /></td>
+                          <td className="hidden px-4 py-3.5 lg:table-cell"><div className="ml-auto h-4 w-20 rounded bg-slate-800" /></td>
+                          <td className="px-5 py-3.5"><div className="ml-auto h-8 w-24 rounded-lg bg-slate-800" /></td>
+                        </tr>
+                      ))
+                    : filteredItems.map((item) => {
+                        const badge = getMuxStatusBadge(item);
+                        const isSelected = selectedItem?.id === item.id && selectedItem?.type === item.type;
+                        return (
+                          <tr
+                            key={`${item.type}-${item.id}`}
+                            tabIndex={0}
+                            role="button"
+                            onClick={() => openDetails(item)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                openDetails(item);
+                              }
+                            }}
+                            className={`cursor-pointer transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 ${
+                              isSelected ? "bg-primary-600/10" : "hover:bg-slate-800/40"
+                            }`}
+                          >
                         <td className="px-5 py-3.5 text-sm font-medium text-slate-100">
                           <div className="flex items-center gap-3">
                             <div className="h-10 w-14 shrink-0 overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
@@ -539,7 +606,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                             {canDelete && (
                               <button
                                 type="button"
-                                onClick={() => handleDelete(item)}
+                                onClick={() => requestDelete(item)}
                                 disabled={deletingId === item.id}
                                 className="rounded-lg border border-transparent px-3 py-1.5 font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:opacity-60"
                               >
@@ -553,7 +620,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                   })}
                   {!filteredItems.length && !loading && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-sm text-slate-500" colSpan={6}>
+                      <td className="px-4 py-10 text-center text-sm text-slate-400" colSpan={6}>
                         Tidak ada konten yang cocok.
                       </td>
                     </tr>
@@ -564,6 +631,16 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
 
             {/* Mobile List */}
             <div className="space-y-3 p-4 md:hidden">
+              {loading && !filteredItems.length &&
+                Array.from({ length: 4 }).map((_, idx) => (
+                  <div
+                    key={`mobile-skeleton-${idx}`}
+                    className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4 space-y-3 animate-pulse motion-reduce:animate-none"
+                  >
+                    <div className="h-4 w-3/4 rounded bg-slate-800" />
+                    <div className="h-3 w-1/2 rounded bg-slate-800" />
+                  </div>
+                ))}
               {filteredItems.map((item) => {
                 const badge = getMuxStatusBadge(item);
                 return (
@@ -586,16 +663,16 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                       <button
                         type="button"
                         onClick={() => openDetails(item)}
-                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200"
+                        className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200"
                       >
                         Kelola
                       </button>
                       {canDelete && (
                         <button
                           type="button"
-                          onClick={() => handleDelete(item)}
+                          onClick={() => requestDelete(item)}
                           disabled={deletingId === item.id}
-                          className="rounded-lg px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
+                          className="min-h-[44px] rounded-lg px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
                         >
                           {deletingId === item.id ? "Menghapus..." : "Hapus"}
                         </button>
@@ -604,25 +681,51 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                   </div>
                 );
               })}
+              {!filteredItems.length && !loading && (
+                <div className="py-10 text-center text-sm text-slate-400">
+                  Tidak ada konten yang cocok.
+                </div>
+              )}
             </div>
           </>
         ) : (
           /* Grid View */
           <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {loading && !filteredItems.length &&
+              Array.from({ length: 4 }).map((_, idx) => (
+                <div
+                  key={`grid-skeleton-${idx}`}
+                  className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/60 animate-pulse motion-reduce:animate-none"
+                >
+                  <div className="aspect-video w-full bg-slate-800" />
+                  <div className="p-3.5 space-y-2">
+                    <div className="h-4 w-3/4 rounded bg-slate-800" />
+                    <div className="h-3 w-1/2 rounded bg-slate-800" />
+                  </div>
+                </div>
+              ))}
             {filteredItems.map((item) => {
               const badge = getMuxStatusBadge(item);
               return (
                 <div
                   key={`${item.type}-${item.id}-grid`}
+                  tabIndex={0}
+                  role="button"
                   onClick={() => openDetails(item)}
-                  className="group cursor-pointer overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/60 transition hover:border-primary-500/40"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDetails(item);
+                    }
+                  }}
+                  className="group cursor-pointer overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/60 transition hover:border-primary-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 >
                   <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
                     <MuxThumbnail
                       src={item.thumbnail}
                       playbackId={item.mux_playback_id || item.muxPlaybackId || item.mux_video_id}
                       alt={item.title}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105 motion-reduce:transform-none"
                       fallback={
                         <div className="flex h-full w-full items-center justify-center text-2xl text-slate-600">
                           🎬
@@ -650,7 +753,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                       {canDelete && (
                         <button
                           type="button"
-                          onClick={() => handleDelete(item)}
+                          onClick={() => requestDelete(item)}
                           disabled={deletingId === item.id}
                           className="rounded-lg px-2.5 py-1 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-60"
                         >
@@ -663,7 +766,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
               );
             })}
             {!filteredItems.length && !loading && (
-              <div className="col-span-full py-10 text-center text-sm text-slate-500">
+              <div className="col-span-full py-10 text-center text-sm text-slate-400">
                 Tidak ada konten yang cocok.
               </div>
             )}
@@ -684,6 +787,9 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
           onClick={requestCloseDrawer}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="content-drawer-title"
             className={`relative h-full w-full overflow-y-auto border-l border-slate-800 bg-slate-950 p-6 shadow-2xl ${
               editMode ? "max-w-4xl" : "max-w-xl"
             }`}
@@ -720,7 +826,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                     <p className="text-[11px] font-semibold uppercase tracking-widest text-primary-300">
                       {selectedItem.type === CONTENT_TYPES.MOVIE ? "Detail Movie" : "Detail Series"}
                     </p>
-                    <h3 className="text-xl font-semibold text-slate-100">{selectedItem.title}</h3>
+                    <h3 id="content-drawer-title" className="text-xl font-semibold text-slate-100">{selectedItem.title}</h3>
                     <p className="text-xs text-slate-400">
                       {selectedItem.category}
                       {selectedItem.createdAt
@@ -838,7 +944,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                                 <button
                                   type="button"
                                   onClick={() => setEditMode(CONTENT_TYPES.SERIES)}
-                                  className="rounded-lg border border-slate-700 px-2 py-0.5 text-[10px] font-semibold text-slate-200 hover:border-primary-500"
+                                  className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-200 hover:border-primary-500"
                                 >
                                   Edit
                                 </button>
@@ -847,7 +953,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                                     type="button"
                                     onClick={() => handleQuickDeleteEpisode(episode)}
                                     disabled={deletingEpisodeId === epId}
-                                    className="rounded-lg border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                                    className="min-h-[44px] rounded-lg border border-rose-500/30 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
                                   >
                                     {deletingEpisodeId === epId ? "Menghapus..." : "Hapus"}
                                   </button>
@@ -931,7 +1037,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                   {canDelete && (
                     <button
                       type="button"
-                      onClick={() => handleDelete(selectedItem)}
+                      onClick={() => requestDelete(selectedItem)}
                       disabled={deletingId === selectedItem.id}
                       className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-60"
                     >
@@ -945,7 +1051,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
             {editMode === CONTENT_TYPES.MOVIE && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-                  <h3 className="text-lg font-semibold text-slate-100">Edit Movie: {selectedItem.title}</h3>
+                  <h3 id="content-drawer-title" className="text-lg font-semibold text-slate-100">Edit Movie: {selectedItem.title}</h3>
                   <button
                     type="button"
                     onClick={() => setEditMode(null)}
@@ -971,7 +1077,7 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
             {editMode === CONTENT_TYPES.SERIES && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
-                  <h3 className="text-lg font-semibold text-slate-100">Edit Series: {selectedItem.title}</h3>
+                  <h3 id="content-drawer-title" className="text-lg font-semibold text-slate-100">Edit Series: {selectedItem.title}</h3>
                   <button
                     type="button"
                     onClick={() => setEditMode(null)}
@@ -993,6 +1099,58 @@ export default function ContentTable({ userRole = ADMIN_ROLES.EDITOR }) {
                 />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus Konten */}
+      {confirmDeleteItem && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => {
+            if (!deletingId) {
+              setConfirmDeleteItem(null);
+              restoreFocus();
+            }
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            aria-describedby="delete-confirm-desc"
+            className="w-full max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-950 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="delete-confirm-title" className="text-base font-semibold text-slate-100">
+              Konfirmasi Hapus Konten
+            </h3>
+            <p id="delete-confirm-desc" className="text-sm text-slate-300">
+              {confirmDeleteItem.type === CONTENT_TYPES.MOVIE
+                ? `Hapus movie "${confirmDeleteItem.title}"? Tindakan ini tidak bisa dibatalkan.`
+                : `Hapus series "${confirmDeleteItem.title}" beserta seluruh episode? Tindakan ini tidak bisa dibatalkan.`}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={Boolean(deletingId)}
+                onClick={() => {
+                  setConfirmDeleteItem(null);
+                  restoreFocus();
+                }}
+                className="min-h-[44px] rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={deletingId === confirmDeleteItem.id}
+                onClick={() => handleDelete(confirmDeleteItem)}
+                className="min-h-[44px] rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50"
+              >
+                {deletingId === confirmDeleteItem.id ? "Menghapus..." : "Ya, Hapus"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -26,7 +26,7 @@ const NAV_GROUPS = [
 
 const Indicator = () => (
   <span className="relative flex h-2 w-2 shrink-0">
-    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+    <span className="absolute inline-flex h-full w-full animate-ping motion-reduce:animate-none rounded-full bg-emerald-400 opacity-60" />
     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
   </span>
 );
@@ -115,7 +115,7 @@ const Sidebar = ({ session }) => {
         {groupedNav.map((group) => (
           <div key={group.id} className="space-y-1">
             {expanded && (
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                 {group.label}
               </p>
             )}
@@ -126,8 +126,9 @@ const Sidebar = ({ session }) => {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={isActive ? "page" : undefined}
                     title={expanded ? item.description : `${item.label} — ${item.description}`}
-                    className={`group flex items-center rounded-xl transition-all duration-150 ${
+                    className={`group flex items-center rounded-xl transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                       expanded ? "gap-3 px-3 py-2" : "justify-center p-2"
                     } ${
                       isActive
@@ -168,7 +169,7 @@ const Sidebar = ({ session }) => {
                 key={item.href}
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`snap-start flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition ${
+                className={`snap-start flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 text-[10px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                   isActive
                     ? "bg-primary-600/20 text-primary-200"
                     : "text-slate-400 hover:text-slate-200"
@@ -202,7 +203,7 @@ const Sidebar = ({ session }) => {
           aria-expanded={expanded}
           aria-label={expanded ? "Ciutkan sidebar" : "Perluas sidebar"}
           title={expanded ? "Ciutkan Sidebar" : "Perluas Sidebar"}
-          className={`flex w-full items-center gap-2.5 rounded-xl border border-slate-800/80 bg-slate-900/50 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:bg-slate-800/80 hover:text-white ${
+          className={`flex w-full items-center gap-2.5 rounded-xl border border-slate-800/80 bg-slate-900/50 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-slate-700 hover:bg-slate-800/80 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
             !expanded && "justify-center px-0"
           }`}
         >

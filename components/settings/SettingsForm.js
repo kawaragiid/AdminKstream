@@ -152,9 +152,14 @@ const SettingsForm = ({ initialSettings }) => {
         <p className="text-sm text-slate-400">Kelola kategori yang tersedia di platform user.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {settings.categories?.map((category) => (
-            <span key={category} className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-4 py-1.5 text-xs text-slate-200">
+            <span key={category} className="inline-flex items-center gap-1 rounded-full border border-slate-700 pl-4 pr-1 py-1 text-xs text-slate-200">
               {category}
-              <button type="button" onClick={() => removeCategory(category)} className="text-slate-500 hover:text-rose-300">
+              <button
+                type="button"
+                onClick={() => removeCategory(category)}
+                aria-label={`Hapus kategori ${category}`}
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-slate-400 transition hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+              >
                 ×
               </button>
             </span>
@@ -171,12 +176,12 @@ const SettingsForm = ({ initialSettings }) => {
               }
             }}
             placeholder="Tambah kategori"
-            className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200"
+            className="flex-1 rounded-2xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           />
           <button
             type="button"
             onClick={addCategory}
-            className="w-full sm:w-auto rounded-full bg-primary-600 px-4 py-2 text-xs font-semibold text-white hover:bg-primary-500"
+            className="min-h-[44px] w-full sm:w-auto rounded-full bg-primary-600 px-5 py-2 text-xs font-semibold text-white hover:bg-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
           >
             Tambah
           </button>
@@ -198,7 +203,7 @@ const SettingsForm = ({ initialSettings }) => {
                   : ""
               }
               onChange={(e) => handleSelectHeroContent(e.target.value)}
-              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200"
+              className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
             >
               <option value="">-- Pilih Movie / Series --</option>
               {contentItems.map((item) => (
@@ -210,27 +215,35 @@ const SettingsForm = ({ initialSettings }) => {
           </label>
           <label className="text-sm text-slate-300">
             Judul
-            <input value={settings.hero?.title ?? ""} onChange={(event) => updateHero("title", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+            <input value={settings.hero?.title ?? ""} onChange={(event) => updateHero("title", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" />
           </label>
           <label className="text-sm text-slate-300">
             Konten ID
-            <input value={settings.hero?.contentId ?? ""} onChange={(event) => updateHero("contentId", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+            <input value={settings.hero?.contentId ?? ""} onChange={(event) => updateHero("contentId", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" />
           </label>
           <label className="text-sm text-slate-300 md:col-span-2">
             Subtitle
-            <input value={settings.hero?.subtitle ?? ""} onChange={(event) => updateHero("subtitle", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+            <input value={settings.hero?.subtitle ?? ""} onChange={(event) => updateHero("subtitle", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" />
           </label>
           <label className="text-sm text-slate-300 md:col-span-2">
             Background URL
-            <input value={settings.hero?.backgroundUrl ?? ""} onChange={(event) => updateHero("backgroundUrl", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200" />
+            <input value={settings.hero?.backgroundUrl ?? ""} onChange={(event) => updateHero("backgroundUrl", event.target.value)} className="mt-2 w-full rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" />
           </label>
         </div>
       </div>
 
-      {message && <div className={`rounded-2xl border px-4 py-3 text-sm ${message.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-rose-500/30 bg-rose-500/10 text-rose-200"}`}>{message.text}</div>}
+      {message && (
+        <div
+          role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={`rounded-2xl border px-4 py-3 text-sm ${message.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-rose-500/30 bg-rose-500/10 text-rose-200"}`}
+        >
+          {message.text}
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3">
-        <button type="submit" disabled={saving} className="rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700">
+        <button type="submit" disabled={saving} className="min-h-[44px] rounded-full bg-primary-600 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:bg-slate-700">
           {saving ? "Menyimpan..." : "Simpan Pengaturan"}
         </button>
       </div>

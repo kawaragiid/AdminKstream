@@ -114,7 +114,7 @@ export default function LoginForm({ errorCode }) {
   return (
     <div className="w-full max-w-md rounded-3xl border border-slate-800/60 bg-slate-900/80 p-6 sm:p-8 shadow-2xl shadow-slate-950/40">
       <div className="text-center">
-        <p className="text-sm uppercase tracking-[0.25em] text-slate-500">AdminKstream</p>
+        <p className="text-sm uppercase tracking-[0.25em] text-slate-400">AdminKstream</p>
         <h1 className="mt-3 text-2xl font-semibold text-slate-100">Masuk ke dashboard</h1>
         <p className="mt-2 text-sm text-slate-400">
           Gunakan akun admin/editor yang terdaftar.
@@ -173,7 +173,7 @@ export default function LoginForm({ errorCode }) {
       </form>
 
       <div className="mt-6">
-        <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-slate-500">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-slate-400">
           <span className="h-px flex-1 bg-slate-800" />
           atau
           <span className="h-px flex-1 bg-slate-800" />

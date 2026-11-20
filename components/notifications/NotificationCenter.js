@@ -176,8 +176,34 @@ const NotificationCenter = ({ initialNotifications = [] }) => {
           </div>
         ))}
         {!visibleNotifications.length && !loading && <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-6 text-center text-sm text-slate-400">Tidak ada notifikasi {filterMode === "unread" ? "yang belum dibaca" : "saat ini"}.</div>}
-        {loading && <div className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-6 text-center text-sm text-slate-400">Memuat notifikasi...</div>}
-        {error && <div className="rounded-3xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 text-center text-sm text-rose-200">{error}</div>}
+        {loading && (
+          <div aria-busy="true" aria-label="Memuat notifikasi" className="space-y-4">
+            {[0, 1, 2].map((item) => (
+              <div
+                key={item}
+                className="rounded-3xl border border-slate-800/60 bg-slate-900/60 px-5 py-4 animate-pulse"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-2 flex-1">
+                    <div className="h-4 w-48 rounded bg-slate-800" />
+                    <div className="h-3.5 w-3/4 rounded bg-slate-800/80" />
+                    <div className="h-3 w-32 rounded bg-slate-800/60" />
+                  </div>
+                  <div className="h-8 w-28 rounded-full bg-slate-800" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {error && (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="rounded-3xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 text-center text-sm text-rose-200"
+          >
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );

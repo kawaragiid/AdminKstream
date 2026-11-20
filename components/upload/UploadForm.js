@@ -83,13 +83,15 @@ export default function UploadForm() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-2 text-sm">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
+        <div role="tablist" aria-label="Jenis upload konten" className="flex flex-1 flex-wrap items-center gap-2">
           {tabs.map((tab) => {
             const isActive = tab.type === activeTab;
             return (
               <button
                 key={tab.type}
                 type="button"
+                role="tab"
+                aria-selected={isActive}
                 onClick={() => handleTabChange(tab.type)}
                 className={`flex-1 min-w-[140px] rounded-xl px-4 py-2.5 text-xs font-semibold transition sm:text-sm ${
                   isActive

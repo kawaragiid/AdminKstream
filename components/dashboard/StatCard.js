@@ -51,7 +51,7 @@ const StatCard = ({
           ? currencyFormatter.format(safeValue)
           : formatNumber(safeValue, { compact: true })}
       </p>
-      {helper && <p className="mt-2 text-xs text-slate-500">{helper}</p>}
+      {helper && <p className="mt-2 text-xs text-slate-400">{helper}</p>}
     </div>
   );
 };

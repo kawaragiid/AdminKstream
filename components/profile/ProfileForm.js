@@ -60,7 +60,32 @@ export default function ProfileForm() {
     }
   };
 
-  if (loading) return <div className="text-sm text-slate-400">Memuat profil...</div>;
+  if (loading) {
+    return (
+      <div
+        aria-busy="true"
+        aria-label="Memuat profil"
+        className="space-y-4 rounded-3xl border border-slate-800/60 bg-slate-900/60 p-6 animate-pulse"
+      >
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-full bg-slate-800" />
+          <div className="space-y-2 flex-1">
+            <div className="h-3.5 w-28 rounded bg-slate-800" />
+            <div className="h-3 w-64 max-w-full rounded bg-slate-800/80" />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="h-3.5 w-32 rounded bg-slate-800" />
+          <div className="h-11 w-full rounded-2xl bg-slate-800/80" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-3.5 w-40 rounded bg-slate-800" />
+          <div className="h-11 w-full rounded-2xl bg-slate-800/80" />
+        </div>
+        <div className="h-10 w-36 rounded-2xl bg-slate-800" />
+      </div>
+    );
+  }
 
   return (
     <form
@@ -108,7 +133,11 @@ export default function ProfileForm() {
       </label>
 
       {message && (
-        <div className={`rounded-2xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}>
+        <div
+          role={message.type === 'error' ? 'alert' : 'status'}
+          aria-live="polite"
+          className={`rounded-2xl border px-4 py-3 text-sm ${message.type === 'success' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-500/30 bg-rose-500/10 text-rose-200'}`}
+        >
           {message.text}
         </div>
       )}

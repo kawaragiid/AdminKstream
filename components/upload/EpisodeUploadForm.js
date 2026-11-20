@@ -335,6 +335,18 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
     }
   };
 
+  const handleCancelUpload = () => {
+    xhrRef.current?.abort();
+    xhrRef.current = null;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setUploadStatus("idle");
+    setUploadProgress(0);
+    setCurrentVideoFile(null);
+    if (videoInputRef.current) videoInputRef.current.value = "";
+    setMessage({ type: "info", text: "Upload video dibatalkan." });
+  };
+
   const handleCheckUploadStatus = async () => {
     if (!muxUploadId) return;
     try {
@@ -676,14 +688,23 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
               />
             </label>
             {uploadStatus === "uploading" && (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
                   <div
                     className="h-full bg-primary-500 transition-all"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
-                <p className="text-[11px] text-slate-400">Mengunggah ke Mux... {uploadProgress}%</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-400">Mengunggah ke Mux... {uploadProgress}%</p>
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="min-h-[44px] rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-500/20"
+                  >
+                    Batalkan Upload
+                  </button>
+                </div>
               </div>
             )}
             {muxUploadId && !muxPlaybackId && uploadStatus !== "uploading" && (
@@ -876,6 +897,8 @@ export default function EpisodeUploadForm({ initialSeriesId = "", initialSeason 
 
       {message && (
         <div
+          role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
           className={`rounded-xl border px-4 py-3 text-sm ${
             message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"

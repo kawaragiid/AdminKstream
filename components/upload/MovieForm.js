@@ -688,6 +688,29 @@ export default function MovieForm({ initialData, onSuccess, onDirtyChange, submi
     }
   }
 
+  const validateStep1 = () => {
+    const newErrors = {};
+    if (!formData.title?.trim()) newErrors.title = "Judul wajib diisi.";
+    if (!formData.description?.trim()) newErrors.description = "Deskripsi wajib diisi.";
+    if (!formData.category?.trim()) newErrors.category = "Kategori wajib diisi.";
+    if (!(formData.mux_playback_id?.trim() || formData.mux_video_id?.trim())) {
+      newErrors.mux_playback_id = "Playback ID wajib diisi.";
+    }
+    setErrors((prev) => ({
+      ...prev,
+      title: newErrors.title,
+      description: newErrors.description,
+      category: newErrors.category,
+      mux_playback_id: newErrors.mux_playback_id,
+    }));
+    if (Object.keys(newErrors).length > 0) {
+      setMessage({ type: "error", text: "Mohon lengkapi semua field yang wajib diisi di Langkah 1." });
+      return false;
+    }
+    setMessage(null);
+    return true;
+  };
+
   // Form submit handler
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -825,13 +848,15 @@ export default function MovieForm({ initialData, onSuccess, onDirtyChange, submi
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* YouTube Studio Stepper */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-4">
+      <div role="tablist" aria-label="Langkah upload movie" className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-4">
         {studioSteps.map((step) => {
           const isActive = studioStep === step.id;
           return (
             <button
               key={step.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => setStudioStep(step.id)}
               className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
                 isActive
@@ -848,6 +873,7 @@ export default function MovieForm({ initialData, onSuccess, onDirtyChange, submi
       {message && (
         <div
           role={message.type === "error" ? "alert" : "status"}
+          aria-live="polite"
           className={`rounded-xl border px-4 py-3 text-xs ${
             message.type === "success"
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
@@ -1040,7 +1066,11 @@ export default function MovieForm({ initialData, onSuccess, onDirtyChange, submi
               <div className="flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setStudioStep(2)}
+                  onClick={() => {
+                    if (validateStep1()) {
+                      setStudioStep(2);
+                    }
+                  }}
                   className="rounded-xl bg-slate-800 px-5 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
                 >
                   Lanjut: Subtitle &amp; Trailer →

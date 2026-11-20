@@ -126,7 +126,7 @@ function SubtitleEditor({ subtitles, onChange, messageSetter, onUploadStart, onU
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-200">Subtitles</p>
-        <button type="button" onClick={addSubtitle} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
+        <button type="button" onClick={addSubtitle} className="min-h-[44px] rounded-full border border-slate-700 px-3.5 py-2 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
           Tambah Subtitle
         </button>
       </div>
@@ -141,7 +141,7 @@ function SubtitleEditor({ subtitles, onChange, messageSetter, onUploadStart, onU
               ))}
             </select>
             <input value={subtitle.label ?? ""} onChange={(e) => updateSubtitle(index, "label", e.target.value)} placeholder="Label" className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-200" />
-            <button type="button" onClick={() => removeSubtitle(index)} className="rounded-full border border-transparent px-3 py-1 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+            <button type="button" onClick={() => removeSubtitle(index)} className="min-h-[44px] rounded-full border border-transparent px-3.5 py-2 text-xs font-semibold text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
               Hapus
             </button>
           </div>
@@ -186,6 +186,8 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
   const [confirmCloseModal, setConfirmCloseModal] = useState(false);
   const [episodeModalError, setEpisodeModalError] = useState(null);
   const [activeSeason, setActiveSeason] = useState(1);
+  const [episodeToDeleteIndex, setEpisodeToDeleteIndex] = useState(null);
+  const [isDeletingEpisode, setIsDeletingEpisode] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -975,18 +977,24 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
     closeEpisodeEditor();
   };
 
-  const deleteEpisode = async (index) => {
+  const deleteEpisode = (index) => {
     const targetEpisode = formData.episodes?.[index];
     if (!targetEpisode) return;
+    setEpisodeToDeleteIndex(index);
+  };
 
-    const confirmed = window.confirm(
-      `Hapus episode "${targetEpisode.title ?? `Episode ${targetEpisode.epNumber ?? index + 1}`}"?` +
-        (initialData?.id ? " Video di Mux juga akan dihapus." : "")
-    );
-    if (!confirmed) return;
+  const confirmDeleteEpisode = async () => {
+    if (episodeToDeleteIndex === null) return;
+    const index = episodeToDeleteIndex;
+    const targetEpisode = formData.episodes?.[index];
+    if (!targetEpisode) {
+      setEpisodeToDeleteIndex(null);
+      return;
+    }
 
-    if (initialData?.id && targetEpisode?.episodeId) {
-      try {
+    setIsDeletingEpisode(true);
+    try {
+      if (initialData?.id && targetEpisode?.episodeId) {
         const res = await fetch(`/api/series/${initialData.id}/episodes/${targetEpisode.episodeId}`, {
           method: "DELETE",
         });
@@ -994,26 +1002,57 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
         if (!res.ok) {
           throw new Error(json?.error ?? "Gagal menghapus episode.");
         }
-        setMessage({ type: "success", text: "Episode berhasil dihapus." });
-      } catch (error) {
-        setMessage({ type: "error", text: error?.message ?? "Gagal menghapus episode." });
-        return;
       }
-    }
 
-    setFormData((prev) => {
-      const episodes = [...(prev.episodes ?? [])];
-      episodes.splice(index, 1);
-      return { ...prev, episodes };
-    });
-    setMessage({ type: "success", text: "Episode berhasil dihapus." });
+      setFormData((prev) => {
+        const episodes = [...(prev.episodes ?? [])];
+        episodes.splice(index, 1);
+        return { ...prev, episodes };
+      });
+      setMessage({ type: "success", text: "Episode berhasil dihapus." });
 
-    if (editingEpisodeIndex === index) {
-      closeEpisodeEditor();
-    } else if (editingEpisodeIndex !== null && editingEpisodeIndex > index) {
-      setEditingEpisodeIndex((prevIndex) => (prevIndex !== null ? prevIndex - 1 : prevIndex));
+      if (editingEpisodeIndex === index) {
+        closeEpisodeEditor();
+      } else if (editingEpisodeIndex !== null && editingEpisodeIndex > index) {
+        setEditingEpisodeIndex((prevIndex) => (prevIndex !== null ? prevIndex - 1 : prevIndex));
+      }
+      setEpisodeToDeleteIndex(null);
+    } catch (error) {
+      setMessage({ type: "error", text: error?.message ?? "Gagal menghapus episode." });
+      setEpisodeToDeleteIndex(null);
+    } finally {
+      setIsDeletingEpisode(false);
     }
   };
+
+  useEffect(() => {
+    if (episodeToDeleteIndex === null && editingEpisodeIndex === null) return;
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      if (episodeToDeleteIndex !== null) {
+        if (!isDeletingEpisode) {
+          setEpisodeToDeleteIndex(null);
+        }
+        return;
+      }
+      if (editingEpisodeIndex !== null) {
+        const isUploading = ["hashing", "uploading"].includes(uploadStatus);
+        const hasDraftEdits = Boolean(
+          episodeDraft.title?.trim() ||
+            episodeDraft.description?.trim() ||
+            episodeDraft.mux_playback_id?.trim() ||
+            currentVideoFile
+        );
+        if (isUploading || hasDraftEdits) {
+          setConfirmCloseModal(true);
+        } else {
+          closeEpisodeEditor();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [episodeToDeleteIndex, isDeletingEpisode, editingEpisodeIndex, uploadStatus, episodeDraft, currentVideoFile]);
 
   const handleAddSeason = () => {
     const nextSeason = seasonData.maxSeason + 1;
@@ -1374,10 +1413,10 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                       <p className="text-xs text-slate-500 line-clamp-2">{episode.description}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => openEpisodeEditor(originalIndex)} className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
+                      <button type="button" onClick={() => openEpisodeEditor(originalIndex)} className="min-h-[44px] rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-200 hover:border-primary-500 hover:text-primary-200">
                         Edit
                       </button>
-                      <button type="button" onClick={() => deleteEpisode(originalIndex)} className="rounded-full border border-transparent px-3 py-1 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
+                      <button type="button" onClick={() => deleteEpisode(originalIndex)} className="min-h-[44px] rounded-full border border-transparent px-4 py-2 text-xs text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10">
                         Hapus
                       </button>
                     </div>
@@ -1403,6 +1442,8 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
         {/* PESAN */}
         {message && (
           <div
+            role={message.type === "error" ? "alert" : "status"}
+            aria-live="polite"
             className={`rounded-2xl border px-4 py-3 text-sm ${
               message.type === "success"
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
@@ -1445,12 +1486,16 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
           onClick={requestCloseEpisodeEditor}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="episode-editor-title"
             className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-primary-500/35 bg-slate-950 p-6 space-y-5 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {confirmCloseModal && (
               <div
                 role="alert"
+                aria-live="polite"
                 className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
               >
                 <span>
@@ -1462,14 +1507,14 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                   <button
                     type="button"
                     onClick={closeEpisodeEditor}
-                    className="rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-500"
+                    className="min-h-[44px] rounded-lg bg-rose-600 px-3 py-1.5 font-semibold text-white hover:bg-rose-500"
                   >
                     Ya, Tutup
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmCloseModal(false)}
-                    className="rounded-lg border border-slate-700 px-3 py-1.5 font-medium text-slate-200 hover:bg-slate-800"
+                    className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-1.5 font-medium text-slate-200 hover:bg-slate-800"
                   >
                     Batal
                   </button>
@@ -1478,7 +1523,7 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
             )}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
               <div>
-                <h4 className="text-base font-semibold text-slate-100">
+                <h4 id="episode-editor-title" className="text-base font-semibold text-slate-100">
                   {episodeDraft.episodeId ? "Edit Episode" : "Tambah Episode Baru"}
                 </h4>
                 <p className="text-xs text-slate-400">
@@ -1493,14 +1538,14 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                   type="button"
                   onClick={requestCloseEpisodeEditor}
                   aria-label="Tutup modal episode"
-                  className="rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
+                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
                 >
                   ✕
                 </button>
               </div>
             </div>
             {isDuplicateDraftEpisode && (
-              <div className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-200">
+              <div role="status" aria-live="polite" className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3.5 py-2 text-xs text-amber-200">
                 Peringatan: Nomor episode S{String(episodeDraft.seasonNumber ?? 1).padStart(2, "0")}E
                 {String(episodeDraft.epNumber ?? 0).padStart(2, "0")} sudah ada di daftar episode series ini.
               </div>
@@ -1656,7 +1701,7 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                       type="button"
                       onClick={() => currentVideoFile && handleDirectUpload(currentVideoFile)}
                       disabled={!currentVideoFile || ["hashing", "uploading"].includes(uploadStatus)}
-                      className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
+                      className="min-h-[44px] rounded-full border border-slate-700 px-3.5 py-2 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
                     >
                       {uploadStatus === "hashing"
                         ? "Memproses..."
@@ -1669,7 +1714,7 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                         type="button"
                         onClick={retryAutofillFromMux}
                         disabled={uploadProgress > 0}
-                        className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
+                        className="min-h-[44px] rounded-full border border-slate-700 px-3.5 py-2 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
                       >
                         Cek ID
                       </button>
@@ -1722,14 +1767,14 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
                 onClick={handleSubtitleSync}
                 disabled={!canSyncSubtitles || isSyncingSubtitles}
                 title={!canSyncSubtitles ? "Subtitle harus memiliki URL publik dan asset Mux harus tersedia." : undefined}
-                className="rounded-full border border-slate-700 px-3 py-1 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
+                className="min-h-[44px] rounded-full border border-slate-700 px-3.5 py-2 text-slate-200 hover:border-primary-500 hover:text-primary-200 disabled:opacity-60"
               >
                 {isSyncingSubtitles ? "Mengirim..." : "Kirim Subtitle ke Mux"}
               </button>
             </div>
 
             {episodeModalError && (
-              <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-200">
+              <div role="alert" aria-live="polite" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-xs text-rose-200">
                 {episodeModalError}
               </div>
             )}
@@ -1764,6 +1809,51 @@ export default function SeriesForm({ initialData, onSuccess, onDirtyChange, subm
               </div>
             </div>
           </div>
+          </div>
+        </div>
+      )}
+
+      {/* KONFIRMASI HAPUS EPISODE */}
+      {episodeToDeleteIndex !== null && formData.episodes?.[episodeToDeleteIndex] && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm"
+          onClick={() => !isDeletingEpisode && setEpisodeToDeleteIndex(null)}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-episode-dialog-title"
+            aria-describedby="delete-episode-dialog-desc"
+            className="w-full max-w-md rounded-2xl border border-rose-500/35 bg-slate-950 p-6 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 id="delete-episode-dialog-title" className="text-base font-semibold text-slate-100">
+              Hapus Episode?
+            </h4>
+            <p id="delete-episode-dialog-desc" className="text-sm text-slate-300">
+              Hapus episode &ldquo;
+              {formData.episodes[episodeToDeleteIndex].title ||
+                `Episode ${formData.episodes[episodeToDeleteIndex].epNumber ?? episodeToDeleteIndex + 1}`}
+              &rdquo;?{initialData?.id ? " Video di Mux juga akan dihapus." : ""}
+            </p>
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setEpisodeToDeleteIndex(null)}
+                disabled={isDeletingEpisode}
+                className="min-h-[44px] rounded-xl border border-slate-700 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteEpisode}
+                disabled={isDeletingEpisode}
+                className="min-h-[44px] rounded-xl bg-rose-600 px-4 py-2 text-xs font-semibold text-white hover:bg-rose-500 disabled:opacity-50"
+              >
+                {isDeletingEpisode ? "Menghapus..." : "Ya, Hapus Episode"}
+              </button>
+            </div>
           </div>
         </div>
       )}

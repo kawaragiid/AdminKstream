@@ -213,9 +213,9 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
             </span>
           </div>
           <p className="mt-1 text-xs text-slate-400">
-            Kurs acuan estimasi: 1 USD = Rp {USD_TO_IDR.toLocaleString("id-ID")} • Kuota gratis 100.000 mnt delivery &amp; kredit $20/bulan.
+            Asumsi kurs 1 USD = Rp {USD_TO_IDR.toLocaleString("id-ID")} • Kuota gratis 100.000 mnt delivery &amp; kredit $20/bulan.
             {report?.generatedAt && (
-              <span className="ml-2 text-slate-500">
+              <span className="ml-2 text-slate-400">
                 • Update {new Date(report.generatedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
@@ -260,7 +260,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
           <p className="mt-1 text-2xl font-semibold text-slate-100 tabular-nums">
             {formatMinutes(s?.totalStoredMinutes)} <span className="text-sm font-normal text-slate-400">menit</span>
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-400">
             {formatCount(s?.totalAssets)} asset ({formatCount(s?.basic720p?.count)} 720p • {formatCount(s?.basic1080p?.count)} 1080p)
           </p>
         </div>
@@ -268,13 +268,13 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
         <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4">
           <p className="text-xs text-slate-400">Total Biaya Kotor (Sebelum Kredit)</p>
           <p className="mt-1 text-2xl font-semibold text-slate-100 tabular-nums">{formatUsd(totalUsage)}</p>
-          <p className="mt-1 text-xs text-slate-500">{formatIdr(totalUsage)} / bulan</p>
+          <p className="mt-1 text-xs text-slate-400">{formatIdr(totalUsage)} / bulan</p>
         </div>
 
         <div className="rounded-xl border border-slate-800/80 bg-slate-950/60 p-4">
           <p className="text-xs text-slate-400">Sisa Kredit $20 PAYG</p>
           <p className="mt-1 text-2xl font-semibold text-emerald-400 tabular-nums">{formatUsd(s?.remainingCreditUsd)}</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-400">
             Terpakai {creditUsedPct}% ({formatIdr(s?.remainingCreditUsd)} tersisa)
           </p>
         </div>
@@ -288,7 +288,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
           >
             {formatUsd(s?.estimatedInvoiceUsd)}
           </p>
-          <p className="mt-1 text-xs text-slate-500">{formatIdr(s?.estimatedInvoiceUsd)} setelah kredit $20</p>
+          <p className="mt-1 text-xs text-slate-400">{formatIdr(s?.estimatedInvoiceUsd)} setelah kredit $20</p>
         </div>
       </div>
 
@@ -298,7 +298,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
             Rincian Perhitungan Biaya Bulan Ini
           </h3>
-          <span className="text-[11px] text-slate-500">Otomatis dari data Mux API</span>
+          <span className="text-[11px] text-slate-400">Otomatis dari data Mux API</span>
         </div>
 
         <div className="divide-y divide-slate-800/60">
@@ -317,7 +317,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
               </div>
               <div className="text-right tabular-nums">
                 <p className="font-semibold text-slate-100">{formatUsd(step.usd)}</p>
-                <p className="text-[11px] text-slate-500">{formatIdr(step.usd)}</p>
+                <p className="text-[11px] text-slate-400">{formatIdr(step.usd)}</p>
               </div>
             </div>
           ))}
@@ -356,7 +356,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
               style={{ width: `${Math.min(100, deliveryQuotaPct)}%` }}
             />
           </div>
-          <p className="text-[11px] text-slate-500 tabular-nums">
+          <p className="text-[11px] text-slate-400 tabular-nums">
             720p/Audio: {formatMinutes(delivery.tier720pMinutes)} mnt • 1080p: {formatMinutes(delivery.tier1080pMinutes)} mnt
           </p>
         </div>
@@ -376,7 +376,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
               style={{ width: `${Math.min(100, creditUsedPct)}%` }}
             />
           </div>
-          <p className="text-[11px] text-slate-500 tabular-nums">
+          <p className="text-[11px] text-slate-400 tabular-nums">
             Storage {formatUsd(s?.storageEstimateUsd)} + Delivery {formatUsd(delivery.estimatedCostUsd)}
           </p>
         </div>
@@ -385,7 +385,7 @@ export default function MuxCostMonitor({ initialReport, mode = "summary" }) {
       {/* Tabel Audit Lengkap hanya di mode full (/analytics) */}
       {mode === "full" && (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/40">
+          <div className="overflow-x-auto rounded-xl border border-slate-800/80 bg-slate-950/40">
             <table className="w-full text-left text-xs">
               <thead className="border-b border-slate-800/80 bg-slate-900/70 text-slate-400">
                 <tr>

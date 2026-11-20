@@ -31,15 +31,21 @@ export default function AnalyticsTabs({
 
   return (
     <div className="space-y-6">
-      <div className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-1.5">
+      <div
+        role="tablist"
+        aria-label="Tab Analitik"
+        className="inline-flex flex-wrap gap-2 rounded-2xl border border-slate-800/80 bg-slate-900/75 p-1.5"
+      >
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
               type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+              className={`rounded-xl px-4 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
                 isActive
                   ? "bg-primary-600 text-white shadow-sm shadow-primary-600/30"
                   : "text-slate-300 hover:bg-slate-800/70"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const ACTION_MATCHERS = {
   create: ["create", "add", "import", "upload"],
@@ -17,6 +17,32 @@ const AuditLogTable = ({ initialLogs = [] }) => {
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [selectedLog, setSelectedLog] = useState(null);
+  const lastFocusedRef = useRef(null);
+
+  const openModal = (log) => {
+    lastFocusedRef.current = document.activeElement;
+    setSelectedLog(log);
+  };
+
+  const closeModal = () => {
+    setSelectedLog(null);
+    const prev = lastFocusedRef.current;
+    if (prev && typeof prev.focus === "function") {
+      setTimeout(() => prev.focus(), 0);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedLog) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedLog]);
 
   const filteredLogs = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -63,16 +89,30 @@ const AuditLogTable = ({ initialLogs = [] }) => {
 
   const renderContent = () => {
     if (loading) {
-      return <div className="px-4 py-6 text-center text-sm text-slate-400">Memuat audit log...</div>;
+      return (
+        <div className="space-y-3 p-4" aria-busy="true" aria-label="Memuat audit log">
+          {Array.from({ length: 5 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="flex items-center justify-between gap-4 rounded-xl border border-slate-800/60 bg-slate-900/60 px-4 py-3.5 animate-pulse motion-reduce:animate-none"
+            >
+              <div className="h-3.5 w-28 rounded bg-slate-800" />
+              <div className="h-3.5 w-40 rounded bg-slate-800" />
+              <div className="hidden h-3.5 w-32 rounded bg-slate-800 sm:block" />
+              <div className="h-3.5 w-24 rounded bg-slate-800" />
+            </div>
+          ))}
+        </div>
+      );
     }
     if (error) {
       return <div className="px-4 py-4 text-center text-sm text-rose-300">{error}</div>;
     }
     if (!logs.length) {
-      return <div className="px-4 py-6 text-center text-sm text-slate-500">Belum ada aktivitas admin.</div>;
+      return <div className="px-4 py-6 text-center text-sm text-slate-400">Belum ada aktivitas admin.</div>;
     }
     if (!filteredLogs.length) {
-      return <div className="px-4 py-6 text-center text-sm text-slate-500">Tidak ada log yang cocok dengan filter.</div>;
+      return <div className="px-4 py-6 text-center text-sm text-slate-400">Tidak ada log yang cocok dengan filter.</div>;
     }
 
     return (
@@ -92,8 +132,20 @@ const AuditLogTable = ({ initialLogs = [] }) => {
               {filteredLogs.map((log) => (
                 <tr
                   key={log.id ?? `${log.action}-${log.createdAt}`}
-                  onClick={() => log.metadata && setSelectedLog(log)}
-                  className={log.metadata ? "cursor-pointer hover:bg-slate-800/40" : ""}
+                  tabIndex={log.metadata ? 0 : undefined}
+                  role={log.metadata ? "button" : undefined}
+                  onClick={() => log.metadata && openModal(log)}
+                  onKeyDown={(e) => {
+                    if (log.metadata && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      openModal(log);
+                    }
+                  }}
+                  className={
+                    log.metadata
+                      ? "cursor-pointer hover:bg-slate-800/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500"
+                      : ""
+                  }
                 >
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-slate-300">{log.createdAt ? new Date(log.createdAt).toLocaleString("id-ID") : "-"}</td>
                   <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-200">
@@ -103,9 +155,9 @@ const AuditLogTable = ({ initialLogs = [] }) => {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedLog(log);
+                          openModal(log);
                         }}
-                        className="mt-0.5 max-w-full truncate text-left text-xs text-primary-300 hover:underline"
+                        className="mt-0.5 max-w-full truncate text-left text-xs text-primary-300 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded"
                       >
                         Lihat detail metadata
                       </button>
@@ -113,11 +165,11 @@ const AuditLogTable = ({ initialLogs = [] }) => {
                   </td>
                   <td className="max-w-sm truncate px-4 py-4 text-sm text-slate-300">
                     <p>{log.targetType ?? "-"}</p>
-                    {log.targetId && <p className="truncate text-xs text-slate-500">{log.targetId}</p>}
+                    {log.targetId && <p className="truncate text-xs text-slate-400">{log.targetId}</p>}
                   </td>
                   <td className="max-w-xs truncate px-4 py-4 text-sm text-slate-300">
                     <p>{log.actor?.displayName ?? log.actor?.email ?? "System"}</p>
-                    {log.actor?.email && <p className="truncate text-xs text-slate-500">{log.actor.email}</p>}
+                    {log.actor?.email && <p className="truncate text-xs text-slate-400">{log.actor.email}</p>}
                   </td>
                 </tr>
               ))}
@@ -139,8 +191,8 @@ const AuditLogTable = ({ initialLogs = [] }) => {
                 {log.metadata && (
                   <button
                     type="button"
-                    onClick={() => setSelectedLog(log)}
-                    className="rounded-lg border border-slate-700 px-2.5 py-1 text-[11px] font-medium text-primary-300 hover:border-primary-500"
+                    onClick={() => openModal(log)}
+                    className="min-h-[44px] rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-primary-300 hover:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                   >
                     Lihat Detail Metadata
                   </button>
@@ -194,23 +246,29 @@ const AuditLogTable = ({ initialLogs = [] }) => {
       {selectedLog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-          onClick={() => setSelectedLog(null)}
+          onClick={closeModal}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="audit-log-modal-title"
             className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl space-y-3"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">{selectedLog.action}</h3>
+                <h3 id="audit-log-modal-title" className="text-sm font-semibold text-slate-100">
+                  {selectedLog.action}
+                </h3>
                 <p className="text-xs text-slate-400">
                   {selectedLog.createdAt ? new Date(selectedLog.createdAt).toLocaleString("id-ID") : "-"}
                 </p>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedLog(null)}
-                className="rounded-lg border border-slate-800 px-2.5 py-1 text-xs text-slate-300 hover:text-white"
+                aria-label="Tutup modal"
+                onClick={closeModal}
+                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg border border-slate-800 text-xs text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
               >
                 ✕
               </button>
